@@ -159,6 +159,45 @@ export const initWhatsApp = async (forceRestart = false) => {
       }
     });
 
+    // Automatic reply handler for customer feedback (Loved it! / Needs Improvement / Okay)
+    sock.ev.on("messages.upsert", async ({ messages }) => {
+      try {
+        if (!messages || !messages.length) return;
+        for (const msg of messages) {
+          if (msg.key?.fromMe) continue;
+          const remoteJid = msg.key?.remoteJid;
+          if (!remoteJid || remoteJid.endsWith("@g.us")) continue;
+
+          const body = (
+            msg.message?.conversation ||
+            msg.message?.extendedTextMessage?.text ||
+            ""
+          ).trim();
+
+          if (!body) continue;
+          const lower = body.toLowerCase();
+
+          if (lower.includes("loved it") || lower.includes("fantastic experience")) {
+            await sock.sendMessage(remoteJid, {
+              text: `Thank you so much for your wonderful feedback! 🎉 We are delighted to hear that you loved your order! We look forward to serving you again soon. ✨`,
+            });
+            console.log(`[WhatsApp] Auto-reply sent to ${remoteJid} for positive feedback`);
+          } else if (lower.includes("needs improvement")) {
+            await sock.sendMessage(remoteJid, {
+              text: `Thank you for sharing your feedback with us. 🙏 We sincerely apologize for falling short of your expectations today! Our management has been notified and we will make sure your next visit is exceptional.`,
+            });
+            console.log(`[WhatsApp] Auto-reply sent to ${remoteJid} for improvement feedback`);
+          } else if (lower.includes("okay")) {
+            await sock.sendMessage(remoteJid, {
+              text: `Thank you for your feedback! 👍 We appreciate your visit and are always striving to make your experience even better. Have a wonderful day! 🌟`,
+            });
+          }
+        }
+      } catch (upsertErr) {
+        console.warn("[WhatsApp] messages.upsert handler notice:", upsertErr.message);
+      }
+    });
+
     sock.ev.on("connection.update", async (update) => {
       const { connection, lastDisconnect, qr } = update;
 

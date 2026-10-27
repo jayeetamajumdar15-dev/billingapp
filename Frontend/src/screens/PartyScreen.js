@@ -27,6 +27,46 @@ export default function PartyScreen({ onOpenDrawer, onBack }) {
   const [formDiscount, setFormDiscount] = useState("0");
   const [formFreebie, setFormFreebie] = useState("");
 
+  // Special Offers & Occasions broadcast state
+  const [offerModalVisible, setOfferModalVisible] = useState(false);
+  const [offerCategory, setOfferCategory] = useState("puja"); // "puja" | "weekend" | "occasion" | "custom"
+  const [offerAudience, setOfferAudience] = useState("all"); // "all" | "vips"
+  const [offerTitle, setOfferTitle] = useState("Durga Puja & Festive Dhamaka 🪔");
+  const [offerDiscount, setOfferDiscount] = useState("15");
+  const [offerFreebie, setOfferFreebie] = useState("Special Sweet Treat");
+  const [offerValidity, setOfferValidity] = useState("This Festive Week");
+  const [offerCustomMsg, setOfferCustomMsg] = useState("");
+  const [broadcastingOffer, setBroadcastingOffer] = useState(false);
+
+  const handleSelectOfferPreset = (cat) => {
+    setOfferCategory(cat);
+    if (cat === "puja") {
+      setOfferTitle("Durga Puja & Festive Dhamaka 🪔");
+      setOfferDiscount("15");
+      setOfferFreebie("Special Sweet Treat");
+      setOfferValidity("This Festive Week");
+      setOfferCustomMsg("");
+    } else if (cat === "weekend") {
+      setOfferTitle("Weekend Bonanza 🎉");
+      setOfferDiscount("20");
+      setOfferFreebie("Free Beverage");
+      setOfferValidity("This Weekend");
+      setOfferCustomMsg("");
+    } else if (cat === "occasion") {
+      setOfferTitle("Celebration Special Treat 🌟");
+      setOfferDiscount("10");
+      setOfferFreebie("Special Gift");
+      setOfferValidity("Next 7 Days");
+      setOfferCustomMsg("");
+    } else {
+      setOfferTitle("Customized Special Offer 🎁");
+      setOfferDiscount("");
+      setOfferFreebie("");
+      setOfferValidity("");
+      setOfferCustomMsg("");
+    }
+  };
+
   const loadParties = useCallback(async () => {
     setLoading(true);
     let query = search ? `search=${encodeURIComponent(search)}` : "";
@@ -102,6 +142,35 @@ export default function PartyScreen({ onOpenDrawer, onBack }) {
     );
   };
 
+  const handleBroadcastOffer = async () => {
+    setBroadcastingOffer(true);
+    try {
+      const payload = {
+        targetAudience: offerAudience,
+        offerCategory,
+        offerTitle,
+        discountPercent: Number(offerDiscount) || 0,
+        freebieItem: offerFreebie.trim(),
+        validUntil: offerValidity.trim(),
+        customMessage: offerCustomMsg.trim(),
+      };
+      const res = await api.parties.broadcastOffer(payload);
+      if (res.success) {
+        setOfferModalVisible(false);
+        Alert.alert(
+          "Broadcast Successful 🎉",
+          res.message || `Special offer prepared for ${res.total || 0} customer(s)!`
+        );
+      } else {
+        Alert.alert("Broadcast Notice", res.message || "Failed to broadcast offer.");
+      }
+    } catch (err) {
+      Alert.alert("Error", err.message || "Failed to broadcast offer.");
+    } finally {
+      setBroadcastingOffer(false);
+    }
+  };
+
   const openPerksDialog = (party) => {
     setSelectedParty(party);
     setFormIsRegular(party.isRegular);
@@ -161,6 +230,36 @@ export default function PartyScreen({ onOpenDrawer, onBack }) {
             </TouchableOpacity>
           ) : null}
         </View>
+
+        {/* ─── FESTIVE & SPECIAL OCCASION OFFERS BUTTON ─── */}
+        <TouchableOpacity
+          onPress={() => {
+            handleSelectOfferPreset("puja");
+            setOfferModalVisible(true);
+          }}
+          className="bg-amber-500 rounded-xl p-2.5 mb-3 flex-row items-center justify-between border border-amber-300 shadow-sm"
+        >
+          <View className="flex-row items-center flex-1 mr-2">
+            <Text className="text-xl mr-2">🪔</Text>
+            <View className="flex-1">
+              <View className="flex-row items-center">
+                <Text className="text-white font-black text-xs">
+                  Puja & Special Offers
+                </Text>
+                <View className="bg-amber-800/40 px-1.5 py-0.2 rounded ml-1.5">
+                  <Text className="text-[9px] text-amber-100 font-bold uppercase">All Customers</Text>
+                </View>
+              </View>
+              <Text className="text-amber-100 text-[10px] font-medium">
+                Send Puja, festive & custom offers to all customers
+              </Text>
+            </View>
+          </View>
+          <View className="bg-white px-2.5 py-1.5 rounded-lg flex-row items-center">
+            <FontAwesome name="whatsapp" size={12} color="#B45309" />
+            <Text className="text-amber-800 font-bold text-[10px] ml-1">Send Deals ➔</Text>
+          </View>
+        </TouchableOpacity>
 
         <View className="flex-row bg-white rounded-xl px-3 py-2 items-center">
           <Ionicons name="search" size={18} color="#9CA3AF" />
@@ -378,6 +477,201 @@ export default function PartyScreen({ onOpenDrawer, onBack }) {
                 <Text className="text-white font-bold text-xs">Save</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─── SPECIAL FESTIVE & OCCASION OFFERS BROADCAST MODAL ─── */}
+      <Modal
+        visible={offerModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setOfferModalVisible(false)}
+      >
+        <View className="flex-1 bg-black/60 justify-end">
+          <View className="bg-white rounded-t-3xl max-h-[90%] p-5">
+            <View className="flex-row items-center justify-between pb-3 border-b border-gray-100">
+              <View className="flex-row items-center">
+                <View className="w-8 h-8 rounded-full bg-amber-100 items-center justify-center mr-2">
+                  <Text className="text-base">🪔</Text>
+                </View>
+                <View>
+                  <Text className="text-base font-extrabold text-gray-900">
+                    Special & Festive Offers
+                  </Text>
+                  <Text className="text-[11px] text-gray-500">
+                    Broadcast promotional offers directly to customers via WhatsApp
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={() => setOfferModalVisible(false)}
+                className="w-8 h-8 rounded-full bg-gray-100 items-center justify-center"
+              >
+                <Ionicons name="close" size={18} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView className="py-3" showsVerticalScrollIndicator={false}>
+              {/* Audience Selector */}
+              <Text className="text-xs font-bold text-gray-700 mb-1.5">
+                Target Audience:
+              </Text>
+              <View className="flex-row bg-gray-100 p-1 rounded-xl mb-3.5 border border-gray-200">
+                <TouchableOpacity
+                  onPress={() => setOfferAudience("all")}
+                  className={`flex-1 py-2 rounded-lg items-center ${
+                    offerAudience === "all" ? "bg-white shadow-xs border border-gray-200" : "bg-transparent"
+                  }`}
+                >
+                  <Text className={`text-xs font-bold ${offerAudience === "all" ? "text-blue-700" : "text-gray-600"}`}>
+                    👥 All Customers ({parties.length})
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setOfferAudience("vips")}
+                  className={`flex-1 py-2 rounded-lg items-center ${
+                    offerAudience === "vips" ? "bg-white shadow-xs border border-gray-200" : "bg-transparent"
+                  }`}
+                >
+                  <Text className={`text-xs font-bold ${offerAudience === "vips" ? "text-amber-700" : "text-gray-600"}`}>
+                    ⭐ VIP Regulars Only ({vipCount})
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Offer Preset Tabs */}
+              <Text className="text-xs font-bold text-gray-700 mb-1.5">
+                Choose Occasion / Offer Theme:
+              </Text>
+              <View className="flex-row flex-wrap gap-1.5 mb-3.5">
+                {[
+                  { key: "puja", label: "🪔 Puja Offer" },
+                  { key: "weekend", label: "🎉 Weekend Deal" },
+                  { key: "occasion", label: "🌟 Celebration" },
+                  { key: "custom", label: "✍️ Custom Offer" },
+                ].map((item) => (
+                  <TouchableOpacity
+                    key={item.key}
+                    onPress={() => handleSelectOfferPreset(item.key)}
+                    className={`px-3 py-2 rounded-xl border flex-row items-center ${
+                      offerCategory === item.key
+                        ? "bg-amber-50 border-amber-500"
+                        : "bg-gray-50 border-gray-200"
+                    }`}
+                  >
+                    <Text
+                      className={`text-xs font-bold ${
+                        offerCategory === item.key ? "text-amber-900" : "text-gray-700"
+                      }`}
+                    >
+                      {item.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Offer Details Form */}
+              <View className="mb-2.5">
+                <Text className="text-xs font-bold text-gray-700 mb-1">
+                  Offer Title / Occasion:
+                </Text>
+                <TextInput
+                  value={offerTitle}
+                  onChangeText={setOfferTitle}
+                  placeholder="e.g. Durga Puja Special Offer 🪔"
+                  className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-semibold text-gray-900"
+                />
+              </View>
+
+              <View className="flex-row gap-2 mb-2.5">
+                <View className="flex-1">
+                  <Text className="text-xs font-bold text-gray-700 mb-1">
+                    Discount %:
+                  </Text>
+                  <TextInput
+                    value={offerDiscount}
+                    onChangeText={setOfferDiscount}
+                    keyboardType="numeric"
+                    placeholder="e.g. 15"
+                    className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-semibold text-gray-900"
+                  />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-xs font-bold text-gray-700 mb-1">
+                    Freebie / Perk:
+                  </Text>
+                  <TextInput
+                    value={offerFreebie}
+                    onChangeText={setOfferFreebie}
+                    placeholder="e.g. Free Sweet Treat"
+                    className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-semibold text-gray-900"
+                  />
+                </View>
+              </View>
+
+              <View className="mb-2.5">
+                <Text className="text-xs font-bold text-gray-700 mb-1">
+                  Offer Validity:
+                </Text>
+                <TextInput
+                  value={offerValidity}
+                  onChangeText={setOfferValidity}
+                  placeholder="e.g. Valid This Festive Week"
+                  className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-semibold text-gray-900"
+                />
+              </View>
+
+              {offerCategory === "custom" ? (
+                <View className="mb-2.5">
+                  <Text className="text-xs font-bold text-gray-700 mb-1">
+                    Custom Message Text:
+                  </Text>
+                  <TextInput
+                    value={offerCustomMsg}
+                    onChangeText={setOfferCustomMsg}
+                    multiline={true}
+                    numberOfLines={3}
+                    placeholder="Type your customized message here..."
+                    className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-900"
+                  />
+                </View>
+              ) : null}
+
+              {/* Live Preview Card */}
+              <View className="mt-2 mb-4 bg-emerald-50 border border-emerald-200 rounded-2xl p-3">
+                <View className="flex-row items-center mb-1">
+                  <FontAwesome name="whatsapp" size={14} color="#059669" />
+                  <Text className="text-emerald-800 text-[11px] font-bold ml-1.5">
+                    WhatsApp Message Preview:
+                  </Text>
+                </View>
+                <Text className="text-[11px] text-gray-700 font-mono leading-relaxed bg-white/80 p-2.5 rounded-xl border border-emerald-100">
+                  {offerCategory === "puja"
+                    ? `🪔 DURGA PUJA & FESTIVE SPECIAL OFFER 🪔\n\nDear Customer,\n\nCelebrate this festive season with us!\n\n✨ Special Festive Offer:\nEnjoy exclusive ${offerDiscount ? offerDiscount + "% FESTIVE DISCOUNT" : "festive treats"}${offerFreebie ? " + complimentary " + offerFreebie + " on us! 🎁" : "! 🪔"}\n${offerValidity ? "📅 Valid: " + offerValidity + "\n\n" : "\n"}Reply to this message to order directly on WhatsApp! 🙏`
+                    : offerCategory === "weekend"
+                    ? `🎉 WEEKEND SPECIAL DHAMAKA 🎉\n\nDear Customer,\n\nMake your weekend special!\n\n🔥 Weekend Offer: ${offerDiscount ? "flat " + offerDiscount + "% OFF" : "special treats"}${offerFreebie ? "\n🎁 Free Treat: " + offerFreebie : ""}\n${offerValidity ? "📅 Valid: " + offerValidity + "\n\n" : "\n"}Reply to this message now to book your order!`
+                    : `🌟 ${offerTitle.toUpperCase()} 🌟\n\nDear Customer,\n\nSpecial celebration reward just for you!\n${offerDiscount ? "🎁 Special Discount: " + offerDiscount + "% OFF\n" : ""}${offerFreebie ? "🍰 Complimentary Gift: " + offerFreebie + "\n" : ""}${offerValidity ? "📅 Valid: " + offerValidity + "\n\n" : "\n"}Show this message at counter to claim your offer!`}
+                </Text>
+              </View>
+            </ScrollView>
+
+            <TouchableOpacity
+              onPress={handleBroadcastOffer}
+              disabled={broadcastingOffer}
+              className="w-full bg-emerald-600 py-3.5 rounded-2xl flex-row items-center justify-center shadow-md active:bg-emerald-700"
+            >
+              {broadcastingOffer ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <>
+                  <FontAwesome name="whatsapp" size={18} color="#FFFFFF" />
+                  <Text className="text-white font-extrabold text-sm ml-2">
+                    Send WhatsApp Offer ({offerAudience === "all" ? "All Customers" : "VIPs"}) 🚀
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>

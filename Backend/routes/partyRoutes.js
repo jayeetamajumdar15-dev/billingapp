@@ -1,11 +1,160 @@
 import express from "express";
 import Party from "../models/Party.js";
+import Invoice from "../models/Invoice.js";
 import { protect } from "../middleware/authMiddleware.js";
 import { sendWhatsAppMessage } from "../services/whatsappService.js";
 
 const router = express.Router();
 
 router.use(protect);
+
+router.post("/broadcast-offer", async (req, res) => {
+  try {
+    const {
+      targetAudience = "all",
+      offerCategory = "puja",
+      offerTitle,
+      discountPercent,
+      freebieItem,
+      validUntil,
+      customMessage,
+    } = req.body;
+
+    const business = req.user;
+    const storeName = business.businessName || "Our Store";
+    const storePhone = (business.phone || "").replace(/[^0-9]/g, "");
+
+    let partyFilter = { userId: business._id };
+    if (targetAudience === "vips") {
+      partyFilter.isRegular = true;
+    }
+
+    const savedParties = await Party.find(partyFilter).lean();
+    const recipientMap = new Map();
+
+    for (const p of savedParties) {
+      const ph = p.whatsappNumber || p.phone;
+      if (ph) {
+        const cleanPh = ph.toString().replace(/[^0-9]/g, "");
+        if (cleanPh.length >= 10 && cleanPh !== "0000000000") {
+          recipientMap.set(cleanPh, {
+            name: p.name || "Valued Customer",
+            phone: cleanPh,
+            isVip: Boolean(p.isRegular),
+          });
+        }
+      }
+    }
+
+    if (targetAudience === "all") {
+      const pastInvoices = await Invoice.find({ userId: business._id })
+        .select("partyName partyPhone")
+        .lean();
+      for (const inv of pastInvoices) {
+        if (inv.partyPhone) {
+          const cleanPh = inv.partyPhone.toString().replace(/[^0-9]/g, "");
+          if (cleanPh.length >= 10 && cleanPh !== "0000000000" && !recipientMap.has(cleanPh)) {
+            recipientMap.set(cleanPh, {
+              name: inv.partyName && inv.partyName !== "Walk-in Customer" ? inv.partyName : "Valued Customer",
+              phone: cleanPh,
+              isVip: false,
+            });
+          }
+        }
+      }
+    }
+
+    const recipients = Array.from(recipientMap.values());
+    if (!recipients.length) {
+      return res.status(200).json({
+        success: false,
+        message: "No customers with valid phone numbers found to receive offers.",
+        sentCount: 0,
+        total: 0,
+      });
+    }
+
+    const results = [];
+    let autoSentCount = 0;
+
+    for (const rec of recipients) {
+      let msg = "";
+      if (customMessage && customMessage.trim()) {
+        msg = `Hello ${rec.name}!\n\n` +
+          `Greetings from *${storeName}*! 🎉\n\n` +
+          `${customMessage.trim()}\n\n` +
+          `Reply to this message to order directly on WhatsApp!\n\n` +
+          `*${storeName}*`;
+      } else if (offerCategory === "puja") {
+        const discountText = discountPercent ? `exclusive *${discountPercent}% FESTIVE DISCOUNT*` : `festive specials`;
+        const freebieText = freebieItem ? ` + complimentary *${freebieItem}* on us! 🎁` : `! 🪔`;
+        msg = `🪔 *DURGA PUJA & FESTIVE SPECIAL OFFER* 🪔\n\n` +
+          `Dear ${rec.name},\n\n` +
+          `Celebrate this festive season with *${storeName}*!\n\n` +
+          `✨ *Special Festive Offer:*\n` +
+          `Enjoy ${discountText}${freebieText}\n` +
+          (validUntil ? `📅 *Valid:* ${validUntil}\n\n` : `\n`) +
+          `Visit our store or reply to this message to order directly on WhatsApp!\n\n` +
+          `Wishing you and your loved ones joyous celebrations! 🙏\n\n` +
+          `*${storeName}*\nPhone: +91 ${storePhone}`;
+      } else if (offerCategory === "weekend") {
+        const discountText = discountPercent ? `flat *${discountPercent}% OFF*` : `special weekend treats`;
+        msg = `🎉 *WEEKEND SPECIAL DHAMAKA* 🎉\n\n` +
+          `Dear ${rec.name},\n\n` +
+          `Make your weekend special with *${storeName}*!\n\n` +
+          `🔥 *Weekend Offer:* ${discountText} on all your favourites!\n` +
+          (freebieItem ? `🎁 *Free Treat:* ${freebieItem}\n` : "") +
+          (validUntil ? `📅 *Valid:* ${validUntil}\n\n` : `\n`) +
+          `Reply to this message now to book your order!\n\n` +
+          `*${storeName}*`;
+      } else {
+        const title = offerTitle || "Special Occasion Exclusive Treat";
+        msg = `🌟 *${title.toUpperCase()}* 🌟\n\n` +
+          `Dear ${rec.name},\n\n` +
+          `We have an exclusive celebration reward just for you at *${storeName}*!\n\n` +
+          (discountPercent ? `🎁 *Special Discount:* ${discountPercent}% OFF\n` : "") +
+          (freebieItem ? `🍰 *Complimentary Gift:* ${freebieItem}\n` : "") +
+          (validUntil ? `📅 *Valid:* ${validUntil}\n\n` : `\n`) +
+          `Show this message at counter or reply here to claim your offer!\n\n` +
+          `Warm regards,\n*${storeName}*`;
+      }
+
+      const waUrl = `https://wa.me/91${rec.phone}?text=${encodeURIComponent(msg)}`;
+      let sentDirectly = false;
+      try {
+        const direct = await sendWhatsAppMessage(rec.phone, msg);
+        if (direct && direct.success) {
+          sentDirectly = true;
+          autoSentCount++;
+        }
+      } catch (err) {}
+
+      results.push({
+        name: rec.name,
+        phone: rec.phone,
+        sentDirectly,
+        whatsappUrl: waUrl,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      total: recipients.length,
+      sentCount: autoSentCount,
+      message: autoSentCount > 0
+        ? `Delivered special offer directly to ${autoSentCount} customer(s) via WhatsApp!`
+        : `Prepared special offers for ${recipients.length} customer(s).`,
+      recipients: results,
+    });
+  } catch (error) {
+    console.error("broadcast-offer error:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to broadcast special offer",
+      error: error.message,
+    });
+  }
+});
 
 const buildWhatsAppMessage = (party, business) => {
   let offerDetails = "";

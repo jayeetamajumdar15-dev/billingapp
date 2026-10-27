@@ -170,6 +170,37 @@ export default function DashboardScreen({
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* ─── FESTIVE & SPECIAL OCCASION OFFERS QUICK ACTION ─── */}
+        <TouchableOpacity
+          onPress={() => (onNavigateTab ? onNavigateTab("party") : null)}
+          activeOpacity={0.85}
+          className="bg-amber-500 rounded-2xl p-3 mb-3.5 border border-amber-300 shadow-xs flex-row items-center justify-between"
+        >
+          <View className="flex-row items-center flex-1 mr-2">
+            <View className="w-10 h-10 rounded-xl bg-amber-600/40 items-center justify-center mr-3">
+              <Text className="text-xl">🪔</Text>
+            </View>
+            <View className="flex-1">
+              <View className="flex-row items-center">
+                <Text className="text-xs font-black text-white uppercase tracking-wider">
+                  Puja & Special Offers
+                </Text>
+                <View className="ml-2 bg-amber-700/60 px-1.5 py-0.2 rounded-full">
+                  <Text className="text-[9px] font-bold text-amber-100">BROADCAST</Text>
+                </View>
+              </View>
+              <Text className="text-[11px] text-amber-100 font-medium mt-0.5">
+                Send festive & customized discounts to all customers
+              </Text>
+            </View>
+          </View>
+          <View className="bg-white px-2.5 py-1.5 rounded-xl flex-row items-center shadow-xs">
+            <Ionicons name="megaphone-outline" size={13} color="#B45309" />
+            <Text className="text-amber-800 text-[11px] font-bold ml-1">Send Deals ➔</Text>
+          </View>
+        </TouchableOpacity>
+
         {/* Reports Banner matching Screen-1 */}
         <TouchableOpacity
           onPress={() => (onNavigateTab ? onNavigateTab("reports") : onRefresh())}

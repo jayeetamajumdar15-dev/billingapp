@@ -188,6 +188,11 @@ export const api = {
     getVipCount: () => request("/parties/vip-count"),
     sendBulkVipOffer: () =>
       request("/parties/send-bulk-vip-offer", { method: "POST" }),
+    broadcastOffer: (payload) =>
+      request("/parties/broadcast-offer", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
     updateRegularPerks: (id, payload) =>
       request(`/parties/${id}/regular-perks`, {
         method: "PUT",

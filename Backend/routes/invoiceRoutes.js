@@ -555,7 +555,15 @@ router.post("/", async (req, res) => {
     const storeTitle = business.businessName || "THE A POP JAKO BITES";
     const amountVal = Number(grandTotal || 0).toFixed(0);
 
-    // Exact Petpooja WhatsApp Notification Format with interactive feedback options
+    const storePhoneClean = (business.phone || "7003317615").replace(/[^0-9]/g, "");
+    const feedbackStorePhone = storePhoneClean.length === 10 ? `91${storePhoneClean}` : storePhoneClean;
+    const invoiceNumStr = String(invoiceNumber || invoice.invoiceNumber || "");
+
+    const lovedUrl = `https://wa.me/${feedbackStorePhone}?text=${encodeURIComponent(`Loved it! ⭐️ Fantastic experience with Order #${invoiceNumStr}`)}`;
+    const okayUrl = `https://wa.me/${feedbackStorePhone}?text=${encodeURIComponent(`Okay 👍 Order #${invoiceNumStr} was fine`)}`;
+    const needsImpUrl = `https://wa.me/${feedbackStorePhone}?text=${encodeURIComponent(`Needs Improvement 👎 Feedback for Order #${invoiceNumStr}`)}`;
+
+    // Exact Petpooja WhatsApp Notification Format with interactive 1-click auto feedback links
     const whatsappText =
       `Dear Customer,\n\n` +
       `Thank you for your recent order at *${storeTitle}*!\n` +
@@ -563,8 +571,12 @@ router.post("/", async (req, res) => {
       `💰 Amount : *Rs.${amountVal}*\n` +
       `📅 Date : ${petpoojaDate}\n` +
       `🔗 View Invoice : ${publicPdfUrl}\n\n` +
-      `How was your experience with your order at *${storeTitle}* today?\n\n` +
-      `[ Loved it! ]   [ Okay ]   [ Needs Improvement ]`;
+      `How was your experience with your order at *${storeTitle}* today?\n` +
+      `_Tap to reply automatically in 1 click:_\n\n` +
+      `🌟 *Loved it!* ➔ ${lovedUrl}\n` +
+      `👍 *Okay* ➔ ${okayUrl}\n` +
+      `👎 *Needs Improvement* ➔ ${needsImpUrl}\n\n` +
+      `_Thank you! Have a wonderful day._ ✨`;
 
     // 3. Generate High-Res PDF Buffer & Send to WhatsApp
     let pdfBuffer = null;
@@ -651,6 +663,14 @@ router.post("/:id/send-whatsapp", async (req, res) => {
     const storeTitle = business.businessName || "THE A POP JAKO BITES";
     const amountVal = Number(invoice.grandTotal || 0).toFixed(0);
 
+    const storePhoneClean = (business.phone || "7003317615").replace(/[^0-9]/g, "");
+    const feedbackStorePhone = storePhoneClean.length === 10 ? `91${storePhoneClean}` : storePhoneClean;
+    const invoiceNumStr = String(invoice.invoiceNumber || "");
+
+    const lovedUrl = `https://wa.me/${feedbackStorePhone}?text=${encodeURIComponent(`Loved it! ⭐️ Fantastic experience with Order #${invoiceNumStr}`)}`;
+    const okayUrl = `https://wa.me/${feedbackStorePhone}?text=${encodeURIComponent(`Okay 👍 Order #${invoiceNumStr} was fine`)}`;
+    const needsImpUrl = `https://wa.me/${feedbackStorePhone}?text=${encodeURIComponent(`Needs Improvement 👎 Feedback for Order #${invoiceNumStr}`)}`;
+
     const whatsappText =
       `Dear Customer,\n\n` +
       `Thank you for your recent order at *${storeTitle}*!\n` +
@@ -658,8 +678,12 @@ router.post("/:id/send-whatsapp", async (req, res) => {
       `💰 Amount : *Rs.${amountVal}*\n` +
       `📅 Date : ${petpoojaDate}\n` +
       `🔗 View Invoice : ${publicPdfUrl}\n\n` +
-      `How was your experience with your order at *${storeTitle}* today?\n\n` +
-      `[ Loved it! ]   [ Okay ]   [ Needs Improvement ]`;
+      `How was your experience with your order at *${storeTitle}* today?\n` +
+      `_Tap to reply automatically in 1 click:_\n\n` +
+      `🌟 *Loved it!* ➔ ${lovedUrl}\n` +
+      `👍 *Okay* ➔ ${okayUrl}\n` +
+      `👎 *Needs Improvement* ➔ ${needsImpUrl}\n\n` +
+      `_Thank you! Have a wonderful day._ ✨`;
 
     let pdfBuffer = null;
     try {

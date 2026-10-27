@@ -21,22 +21,38 @@ export function generateInvoicePdfBuffer(invoice, storeInfo = {}) {
       const items = invoice.items || [];
       const itemCount = items.length;
 
-      const logoSpace = storeInfo.logo ? 65 : 0;
-      const baseHeight = 440 + logoSpace;
-      const itemRowHeight = 22;
-      const extraRows =
-        (invoice.discountTotal > 0 ? 18 : 0) +
-        (invoice.regularDiscountAmount > 0 ? 18 : 0) +
-        (invoice.freebieItemGiven ? 18 : 0) +
-        (invoice.taxTotal > 0 ? 18 : 0) +
-        (invoice.paymentMode === "UPI/CASH" ? 22 : 0) +
-        (invoice.notes ? 20 : 0);
-      const calculatedHeight = Math.max(560, baseHeight + itemCount * itemRowHeight + extraRows);
+      // Dynamic height calculation so the page is small, compact, and fully covered (no bottom blank space)
+      const hasLogo = Boolean(storeInfo.logo);
+      const hasAddress = Boolean(storeInfo.address);
+      const hasEmail = Boolean(storeInfo.email);
+      const hasGstin = Boolean(storeInfo.gstin);
+
+      let estimatedHeight = 270;
+      if (hasLogo) estimatedHeight += 58;
+      if (hasAddress) estimatedHeight += 12;
+      if (hasEmail) estimatedHeight += 11;
+      if (hasGstin) estimatedHeight += 12;
+
+      const itemRowHeight = 17;
+      estimatedHeight += itemCount * itemRowHeight;
+
+      if (invoice.discountTotal > 0) estimatedHeight += 14;
+      if (invoice.regularDiscountAmount > 0) estimatedHeight += 14;
+      if (invoice.freebieItemGiven) estimatedHeight += 14;
+      if (invoice.taxTotal > 0) estimatedHeight += 14;
+      if (invoice.paymentMode === "UPI/CASH") estimatedHeight += 16;
+      if (invoice.notes) estimatedHeight += 16;
+      const savingsEstimate = (invoice.discountTotal || 0) + (invoice.regularDiscountAmount || 0);
+      if (savingsEstimate > 0) estimatedHeight += 22;
+
+      // Clean tight finish with zero trailing white void
+      const calculatedHeight = Math.ceil(estimatedHeight + 14);
 
       const doc = new PDFDocument({
-        size: [288, calculatedHeight], // Standard 76mm / 3-inch roll width
+        size: [288, calculatedHeight], // Compact 76mm / 3-inch roll width
         autoFirstPage: true,
-        margins: { top: 0, bottom: 14, left: 14, right: 14 },
+        bufferPages: true,
+        margins: { top: 0, bottom: 6, left: 14, right: 14 },
       });
 
       const chunks = [];
