@@ -50,21 +50,42 @@ export function generateInvoicePdfBuffer(invoice, storeInfo = {}) {
       doc.rect(0, 0, pageWidth, 5).fill("#2563EB");
       doc.y = 14;
 
-      // ─── 1. LOGO (if available) ───────────────────────────────────────
-      if (storeLogo) {
-        try {
-          const logoRes = await fetch(storeLogo);
-          if (logoRes.ok) {
-            const logoArrayBuf = await logoRes.arrayBuffer();
-            const logoBuf = Buffer.from(logoArrayBuf);
-            const logoSize = 60;
-            const logoX = leftX + (contentWidth - logoSize) / 2;
-            doc.image(logoBuf, logoX, doc.y, { width: logoSize, height: logoSize, align: "center" });
-            doc.y += logoSize + 4;
+      // ─── 1. LOGO (if available or default app icon) ───────────────────
+      let logoBuf = null;
+      try {
+        if (storeLogo) {
+          if (storeLogo.startsWith("data:image")) {
+            const base64Data = storeLogo.split(",")[1];
+            if (base64Data) logoBuf = Buffer.from(base64Data, "base64");
+          } else if (storeLogo.startsWith("http://") || storeLogo.startsWith("https://")) {
+            const logoRes = await fetch(storeLogo);
+            if (logoRes.ok) {
+              const arrBuf = await logoRes.arrayBuffer();
+              logoBuf = Buffer.from(arrBuf);
+            }
+          } else {
+            const fs = await import("fs");
+            if (fs.existsSync(storeLogo)) {
+              logoBuf = fs.readFileSync(storeLogo);
+            }
           }
-        } catch (logoErr) {
-          console.warn("Logo embed notice:", logoErr.message);
         }
+        if (!logoBuf) {
+          const fs = await import("fs");
+          const path = await import("path");
+          const defaultAsset = path.resolve("./Frontend/assets/icon.png");
+          if (fs.existsSync(defaultAsset)) {
+            logoBuf = fs.readFileSync(defaultAsset);
+          }
+        }
+        if (logoBuf) {
+          const logoSize = 56;
+          const logoX = leftX + (contentWidth - logoSize) / 2;
+          doc.image(logoBuf, logoX, doc.y, { width: logoSize, height: logoSize, align: "center" });
+          doc.y += logoSize + 4;
+        }
+      } catch (logoErr) {
+        console.warn("Logo embed notice:", logoErr.message);
       }
 
       // ─── 2. STORE HEADER ──────────────────────────────────────────────
@@ -278,11 +299,13 @@ export function generateInvoicePdfBuffer(invoice, storeInfo = {}) {
       doc.fontSize(6.5).font("Helvetica").fillColor("#64748B")
         .text("Official Computer-Generated Tax Invoice", leftX, doc.y + 1, { width: contentWidth, align: "center" });
 
-      doc.fontSize(6.5).font("Helvetica").fillColor("#64748B")
-        .text(`Powered by Ezo Billing System  *  Helpline: ${storePhone}`, leftX, doc.y + 1, {
-          width: contentWidth,
-          align: "center",
-        });
+      if (storePhone) {
+        doc.fontSize(6.5).font("Helvetica").fillColor("#64748B")
+          .text(`Contact: ${storePhone}`, leftX, doc.y + 1, {
+            width: contentWidth,
+            align: "center",
+          });
+      }
 
       doc.end();
     } catch (err) {

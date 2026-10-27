@@ -116,7 +116,7 @@ export function generateSalesReportPdf(reportData, storeInfo = {}) {
       // Footer
       doc.moveDown(1);
       doc.fontSize(8).font("Helvetica").fillColor("#64748B")
-        .text(`Report Generated On: ${new Date().toLocaleString("en-IN")}  *  Ezo Billing System`, leftX, doc.y, { align: "center", width: pageWidth });
+        .text(`Report Generated On: ${new Date().toLocaleString("en-IN")}`, leftX, doc.y, { align: "center", width: pageWidth });
 
       doc.end();
     } catch (e) {

@@ -122,8 +122,7 @@ router.get("/public/:id", async (req, res) => {
             📥 Download Official PDF Receipt
           </a>
           <div class="footer">
-            Thank you for shopping with us! Visit again.<br>
-            Powered by Ezo Billing System
+            Thank you for shopping with us! Visit again.
           </div>
         </div>
       </body>
