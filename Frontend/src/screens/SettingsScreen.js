@@ -23,6 +23,88 @@ import {
   openApkDownload,
   CURRENT_APP_VERSION,
 } from "../services/updateService";
+import { printTestSlip } from "../utils/receiptPdfGenerator";
+
+export const FOOD_CATEGORIES = [
+  {
+    id: "burgers",
+    name: "Fast Food & Burgers",
+    icon: "🍔",
+    tagline: "Crispy patties, loaded fries & quick bites",
+    badgeColor: "#EF4444",
+    items: [
+      { name: "Crispy Chicken Supreme Burger", price: 149, unit: "PCS", isVeg: false, desc: "Crispy chicken breast, melted cheddar cheese, spicy mayo" },
+      { name: "Veggie Delight Crunch Burger", price: 99, unit: "PCS", isVeg: true, desc: "Spiced potato-pea patty, fresh tomato slices, eggless mayo" },
+      { name: "Peri Peri Loaded Cheesy Fries", price: 89, unit: "PLATE", isVeg: true, desc: "Crispy fries tossed in African peri peri & liquid cheese" },
+      { name: "Golden Crispy Chicken Wings (4pcs)", price: 179, unit: "PLATE", isVeg: false, desc: "Juicy golden wings served with garlic dipping mayo" },
+    ],
+  },
+  {
+    id: "pizzas",
+    name: "Pizzas & Breads",
+    icon: "🍕",
+    tagline: "Stone-baked crusts & molten mozzarella",
+    badgeColor: "#F97316",
+    items: [
+      { name: "Classic Double Cheese Margherita", price: 199, unit: "PCS", isVeg: true, desc: "100% Mozzarella cheese with aromatic herb tomato base" },
+      { name: "Farmhouse Garden Fresh Pizza", price: 259, unit: "PCS", isVeg: true, desc: "Bell peppers, red onions, mushrooms & sweet corn" },
+      { name: "Tandoori Paneer Tikka Pizza", price: 249, unit: "PCS", isVeg: true, desc: "Smoky tandoori paneer, red paprika & spiced makhani drizzle" },
+      { name: "Cheesy Stuffed Garlic Breadsticks", price: 109, unit: "PLATE", isVeg: true, desc: "Oven fresh breadsticks filled with molten cheese & herbs" },
+    ],
+  },
+  {
+    id: "biryani",
+    name: "Biryani & Meals",
+    icon: "🍚",
+    tagline: "Slow-dum cooked aromatic rice & curries",
+    badgeColor: "#D97706",
+    items: [
+      { name: "Hyderabadi Chicken Dum Biryani", price: 249, unit: "PORTION", isVeg: false, desc: "Aged long-grain basmati rice with succulent chicken & raita" },
+      { name: "Shahi Paneer Dum Biryani", price: 199, unit: "PORTION", isVeg: true, desc: "Saffron infused dum rice layered with marinated paneer" },
+      { name: "Butter Chicken & Rice Bowl", price: 219, unit: "BOWL", isVeg: false, desc: "Boneless chicken in velvet tomato gravy over steamed jeera rice" },
+      { name: "Dal Makhani & Jeera Rice Bowl", price: 169, unit: "BOWL", isVeg: true, desc: "24-hr simmered black lentils cooked in fresh cream & butter" },
+    ],
+  },
+  {
+    id: "chinese",
+    name: "Momos & Starters",
+    icon: "🥟",
+    tagline: "Steamed & fried momos, wok-tossed starters",
+    badgeColor: "#16A34A",
+    items: [
+      { name: "Steamed Chicken Momos (6pcs)", price: 119, unit: "PLATE", isVeg: false, desc: "Tender dumplings filled with minced chicken & scallions" },
+      { name: "Crispy Fried Peri Peri Veg Momos", price: 99, unit: "PLATE", isVeg: true, desc: "Crunchy dumplings dusted with zesty spices & mint mayo" },
+      { name: "Chilli Paneer Dry / Gravy", price: 189, unit: "PLATE", isVeg: true, desc: "Wok-fried paneer cubes with green chilies, onions & dark soy" },
+      { name: "Vegetable Hakka Noodles", price: 149, unit: "PLATE", isVeg: true, desc: "Stir-fried ribbon noodles with shredded cabbage & peppers" },
+    ],
+  },
+  {
+    id: "beverages",
+    name: "Beverages & Drinks",
+    icon: "🥤",
+    tagline: "Cold brewed shakes, smoothies & refresher teas",
+    badgeColor: "#0284C7",
+    items: [
+      { name: "Cold Coffee with Vanilla Ice Cream", price: 99, unit: "GLASS", isVeg: true, desc: "Thick espresso shake topped with rich vanilla ice cream" },
+      { name: "Fresh Virgin Mint Lime Mojito", price: 89, unit: "GLASS", isVeg: true, desc: "Muddled fresh mint sprigs, lime juice & sparkling soda" },
+      { name: "Alphonso Mango Cream Smoothie", price: 119, unit: "GLASS", isVeg: true, desc: "Rich ratnagiri mango pulp blended with Greek yogurt" },
+      { name: "Special Masala Kadak Chai", price: 39, unit: "CUP", isVeg: true, desc: "Hand-pounded ginger, cardamom & clove slow brewed tea" },
+    ],
+  },
+  {
+    id: "desserts",
+    name: "Desserts & Bakery",
+    icon: "🍰",
+    tagline: "Molten cakes, pastries & sweet indulgences",
+    badgeColor: "#DB2777",
+    items: [
+      { name: "Warm Choco Lava Cake", price: 89, unit: "PCS", isVeg: true, desc: "Baked chocolate crust filled with hot flowing Belgian chocolate" },
+      { name: "Red Velvet Cream Cheese Pastry", price: 99, unit: "PCS", isVeg: true, desc: "Velvety sponge layered with imported Philadelphia cream cheese" },
+      { name: "Hot Gulab Jamun with Rabri (2pcs)", price: 79, unit: "PORTION", isVeg: true, desc: "Melt-in-mouth milk dumplings served with saffron rabri" },
+      { name: "Fudge Walnut Brownie", price: 109, unit: "PCS", isVeg: true, desc: "Chewy dark chocolate brownie studded with roasted walnuts" },
+    ],
+  },
+];
 
 export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, onProfileUpdated }) {
   const [businessName, setBusinessName] = useState(user?.businessName || "");
@@ -53,8 +135,79 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
   const [billShowType, setBillShowType] = useState(true);
   const [billFooter, setBillFooter] = useState("Thank you! Visit again.");
   const [showPreview, setShowPreview] = useState(false);
-  const [previewTab, setPreviewTab] = useState("customer");
+  const [previewTab, setPreviewTab] = useState("both"); // "both" | "customer" | "cooker"
   const [savingBillFormat, setSavingBillFormat] = useState(false);
+  const [testingPrinter, setTestingPrinter] = useState(false);
+  const [printTarget, setPrintTarget] = useState("both"); // "both" | "customer" | "kot"
+
+  // Food Categories Showcase & Preview state
+  const [selectedFoodCategory, setSelectedFoodCategory] = useState("Fast Food & Burgers");
+  const [importingMenu, setImportingMenu] = useState(false);
+
+  const handleTestPrint = async () => {
+    setTestingPrinter(true);
+    try {
+      const storeData = {
+        businessName: businessName || user?.businessName || "My Store",
+        phone: user?.phone || "7003317615",
+        address: address || user?.address || "",
+        email: email || user?.email || "",
+        gstin: gstin || user?.gstin || "",
+      };
+      const opts = {
+        paperWidth: printerSize,
+        printTarget,
+        showLogo: billShowLogo,
+        showTokenNumber: billShowToken,
+        showCustomerPhone: billShowPhone,
+        showEmail: billShowEmail,
+        showGstin: billShowGstin,
+        showBillType: billShowType,
+        footerNote: billFooter,
+      };
+      await printTestSlip(storeData, opts, printTarget);
+    } catch (err) {
+      Alert.alert("Print Notice", err.message || "Could not launch print service");
+    } finally {
+      setTestingPrinter(false);
+    }
+  };
+
+  const handleImportCategoryItems = async (categoryObj) => {
+    Alert.alert(
+      "Import Category Items",
+      `Add all 4 food items from "${categoryObj.name}" into your store inventory?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Import Now",
+          onPress: async () => {
+            setImportingMenu(true);
+            try {
+              let added = 0;
+              for (const it of categoryObj.items) {
+                await api.items.create({
+                  name: it.name,
+                  category: categoryObj.name,
+                  sellingPrice: it.price,
+                  costPrice: Math.round(it.price * 0.55),
+                  stock: 50,
+                  unit: it.unit || "PCS",
+                  taxRate: 5,
+                });
+                added++;
+              }
+              Alert.alert("Imported", `Successfully added ${added} items from ${categoryObj.name} to your store!`);
+            } catch (err) {
+              Alert.alert("Import Status", err.message || "Could not import items");
+            } finally {
+              setImportingMenu(false);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const fetchWaStatus = async () => {
     try {
@@ -77,6 +230,11 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
       const stored = await AsyncStorage.getItem("billFormatOptions");
       if (stored) {
         const opts = JSON.parse(stored);
+        if (opts.paperWidth) setPrinterSize(opts.paperWidth);
+        if (opts.printTarget) {
+          setPrintTarget(opts.printTarget);
+          setPreviewTab(opts.printTarget === "kot" ? "cooker" : opts.printTarget === "customer" ? "customer" : "both");
+        }
         if (opts.showLogo !== undefined) setBillShowLogo(opts.showLogo);
         if (opts.showTokenNumber !== undefined) setBillShowToken(opts.showTokenNumber);
         if (opts.showCustomerPhone !== undefined) setBillShowPhone(opts.showCustomerPhone);
@@ -93,6 +251,7 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
     try {
       const opts = {
         paperWidth: printerSize,
+        printTarget,
         showLogo: billShowLogo,
         showTokenNumber: billShowToken,
         showCustomerPhone: billShowPhone,
@@ -102,7 +261,7 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
         footerNote: billFooter,
       };
       await AsyncStorage.setItem("billFormatOptions", JSON.stringify(opts));
-      Alert.alert("Saved", "Bill format settings saved!");
+      Alert.alert("Saved", `Bill format updated! Set to print: ${printTarget === "both" ? "Both (Customer + KOT)" : printTarget === "customer" ? "Customer Copy Only" : "Cooker KOT Slip Only"}`);
     } catch {
       Alert.alert("Error", "Could not save bill format settings");
     } finally {
@@ -433,6 +592,42 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
             </TouchableOpacity>
           </View>
 
+          {/* Print Recipient / Target */}
+          <Text className="text-xs font-bold text-gray-700 mb-2">Print Target / For Whom</Text>
+          <View className="flex-row gap-2 mb-4">
+            {[
+              { key: "both", label: "Both (Customer + KOT)", icon: "copy-outline" },
+              { key: "customer", label: "Customer Only", icon: "receipt-outline" },
+              { key: "kot", label: "Cooker KOT Only", icon: "restaurant-outline" },
+            ].map((t) => (
+              <TouchableOpacity
+                key={t.key}
+                onPress={() => {
+                  setPrintTarget(t.key);
+                  setPreviewTab(t.key === "kot" ? "cooker" : t.key === "customer" ? "customer" : "both");
+                }}
+                className={`flex-1 py-2.5 px-1.5 rounded-xl border items-center justify-center ${
+                  printTarget === t.key
+                    ? "bg-blue-600 border-blue-600 shadow-xs"
+                    : "bg-gray-100 border-gray-300"
+                }`}
+              >
+                <Ionicons
+                  name={t.icon}
+                  size={14}
+                  color={printTarget === t.key ? "#FFFFFF" : "#4B5563"}
+                />
+                <Text
+                  className={`text-[10.5px] font-bold mt-1 text-center ${
+                    printTarget === t.key ? "text-white" : "text-gray-700"
+                  }`}
+                >
+                  {t.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
           {/* Paper Size */}
           <Text className="text-xs font-bold text-gray-700 mb-2">Paper / Print Size</Text>
           <View className="flex-row gap-2 mb-4">
@@ -492,14 +687,163 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
             </Text>
           </View>
 
-          {/* Preview Button */}
-          <TouchableOpacity
-            onPress={() => setShowPreview(true)}
-            className="mt-4 bg-gray-800 py-2.5 rounded-xl flex-row items-center justify-center"
-          >
-            <Ionicons name="receipt-outline" size={16} color="#FFFFFF" />
-            <Text className="text-white text-xs font-bold ml-2">Preview Bill Format</Text>
-          </TouchableOpacity>
+          {/* Preview & Bluetooth Test Print Buttons */}
+          <View className="flex-row gap-2 mt-4">
+            <TouchableOpacity
+              onPress={() => setShowPreview(true)}
+              className="flex-1 bg-gray-800 py-2.5 rounded-xl flex-row items-center justify-center"
+            >
+              <Ionicons name="receipt-outline" size={16} color="#FFFFFF" />
+              <Text className="text-white text-xs font-bold ml-1.5">Preview Format</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={handleTestPrint}
+              disabled={testingPrinter}
+              className="flex-1 bg-blue-600 py-2.5 rounded-xl flex-row items-center justify-center"
+            >
+              {testingPrinter ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <>
+                  <Ionicons name="bluetooth" size={16} color="#FFFFFF" />
+                  <Text className="text-white text-xs font-bold ml-1.5">Test Print Slip</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {/* Bluetooth Pairing Guide */}
+          <View className="bg-blue-50 border border-blue-200 rounded-xl p-3 mt-3">
+            <View className="flex-row items-center mb-1">
+              <Ionicons name="information-circle" size={16} color="#2563EB" />
+              <Text className="text-blue-900 font-bold text-xs ml-1">
+                Bluetooth Thermal Printer Connection Guide
+              </Text>
+            </View>
+            <Text className="text-[11px] text-blue-800 leading-4">
+              1. Turn ON your 58mm / 80mm thermal printer.{"\n"}
+              2. Open Phone Settings ➔ Bluetooth, scan & pair (PIN is 0000 or 1234).{"\n"}
+              3. Tap <Text className="font-bold">Test Print Slip</Text> above or print any bill. Choose your paired Bluetooth printer in the print dialog.
+            </Text>
+          </View>
+        </View>
+
+        {/* ─── FOOD CATEGORIES & SHOWCASE CATALOG PREVIEW (6 TYPES) ─── */}
+        <View className="bg-white rounded-xl p-4 mb-4 border border-gray-200 shadow-sm">
+          <View className="flex-row items-center justify-between mb-2">
+            <View className="flex-row items-center">
+              <Text className="text-xl mr-2">🍽️</Text>
+              <View>
+                <Text className="text-xs font-bold text-gray-800 uppercase tracking-wider">
+                  Food Categories & Showcase Catalog
+                </Text>
+                <Text className="text-[10.5px] text-gray-500 font-semibold">
+                  6 Curated Food Categories · 24 Chef Recommended Items
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Category Tabs Pill Carousel */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="py-2 mb-2">
+            {FOOD_CATEGORIES.map((cat) => {
+              const isSelected = selectedFoodCategory === cat.name;
+              return (
+                <TouchableOpacity
+                  key={cat.id}
+                  onPress={() => setSelectedFoodCategory(cat.name)}
+                  className={`flex-row items-center px-3 py-2 rounded-xl mr-2 border ${
+                    isSelected
+                      ? "bg-blue-600 border-blue-600 shadow-xs"
+                      : "bg-gray-100 border-gray-200"
+                  }`}
+                >
+                  <Text className="text-base mr-1.5">{cat.icon}</Text>
+                  <Text
+                    className={`text-xs font-bold ${
+                      isSelected ? "text-white" : "text-gray-700"
+                    }`}
+                  >
+                    {cat.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          {/* Active Category Header & Items Preview */}
+          {(() => {
+            const activeCat = FOOD_CATEGORIES.find((c) => c.name === selectedFoodCategory) || FOOD_CATEGORIES[0];
+            return (
+              <View>
+                <View className="flex-row items-center justify-between bg-blue-50 border border-blue-100 p-2.5 rounded-xl mb-3">
+                  <View className="flex-1 pr-2">
+                    <Text className="text-xs font-extrabold text-blue-900">
+                      {activeCat.icon} {activeCat.name}
+                    </Text>
+                    <Text className="text-[11px] text-blue-700 font-medium mt-0.5">
+                      {activeCat.tagline}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => handleImportCategoryItems(activeCat)}
+                    disabled={importingMenu}
+                    className="bg-blue-600 px-3 py-1.5 rounded-lg flex-row items-center shadow-xs"
+                  >
+                    {importingMenu ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <>
+                        <Ionicons name="cloud-download-outline" size={13} color="#FFFFFF" />
+                        <Text className="text-white text-[11px] font-bold ml-1">Import to Store</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+
+                {/* 4 Preview Items in Selected Category */}
+                <View className="space-y-2">
+                  {activeCat.items.map((item, idx) => (
+                    <View
+                      key={idx}
+                      className="p-3 mb-2 rounded-xl border border-gray-200 bg-gray-50/70 flex-row items-center justify-between"
+                    >
+                      <View className="flex-1 pr-3">
+                        <View className="flex-row items-center mb-0.5">
+                          <View
+                            className={`w-3 h-3 rounded-xs border items-center justify-center mr-1.5 ${
+                              item.isVeg ? "border-emerald-600" : "border-red-600"
+                            }`}
+                          >
+                            <View
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                item.isVeg ? "bg-emerald-600" : "bg-red-600"
+                              }`}
+                            />
+                          </View>
+                          <Text className="text-xs font-bold text-gray-900 flex-1" numberOfLines={1}>
+                            {item.name}
+                          </Text>
+                        </View>
+                        <Text className="text-[11px] text-gray-500 leading-3.5" numberOfLines={2}>
+                          {item.desc}
+                        </Text>
+                      </View>
+                      <View className="items-end bg-white px-2.5 py-1 rounded-lg border border-gray-200 shadow-xs">
+                        <Text className="text-xs font-black text-blue-700">
+                          Rs. {item.price}
+                        </Text>
+                        <Text className="text-[9px] font-semibold text-gray-400">
+                          /{item.unit}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            );
+          })()}
         </View>
 
         {/* Preview Modal */}
@@ -513,8 +857,26 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
                 </TouchableOpacity>
               </View>
 
-              {/* Tabs for Customer vs Cooker */}
+              {/* Tabs for Target (Both / Customer / Cooker) */}
               <View style={{ flexDirection: "row", backgroundColor: "#F3F4F6", borderRadius: 10, padding: 3, marginBottom: 10 }}>
+                <TouchableOpacity
+                  onPress={() => setPreviewTab("both")}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 6,
+                    borderRadius: 8,
+                    alignItems: "center",
+                    backgroundColor: previewTab === "both" ? "#FFFFFF" : "transparent",
+                    shadowColor: previewTab === "both" ? "#000" : "transparent",
+                    shadowOpacity: 0.05,
+                    shadowRadius: 2,
+                  }}
+                >
+                  <Text style={{ fontSize: 10.5, fontWeight: "700", color: previewTab === "both" ? "#1D4ED8" : "#6B7280" }}>
+                    Both (Cust+KOT)
+                  </Text>
+                </TouchableOpacity>
+
                 <TouchableOpacity
                   onPress={() => setPreviewTab("customer")}
                   style={{
@@ -528,8 +890,8 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
                     shadowRadius: 2,
                   }}
                 >
-                  <Text style={{ fontSize: 11, fontWeight: "700", color: previewTab === "customer" ? "#1D4ED8" : "#6B7280" }}>
-                    Customer Bill (2 Copies)
+                  <Text style={{ fontSize: 10.5, fontWeight: "700", color: previewTab === "customer" ? "#1D4ED8" : "#6B7280" }}>
+                    Customer Only
                   </Text>
                 </TouchableOpacity>
 
@@ -546,16 +908,17 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
                     shadowRadius: 2,
                   }}
                 >
-                  <Text style={{ fontSize: 11, fontWeight: "700", color: previewTab === "cooker" ? "#B45309" : "#6B7280" }}>
-                    Cooker Slip (Short KOT)
+                  <Text style={{ fontSize: 10.5, fontWeight: "700", color: previewTab === "cooker" ? "#B45309" : "#6B7280" }}>
+                    Cooker KOT
                   </Text>
                 </TouchableOpacity>
               </View>
 
               {/* Compact receipt preview rendered in RN */}
               <ScrollView showsVerticalScrollIndicator={false}>
-                {previewTab === "customer" ? (
-                  <View style={{ backgroundColor: "#f9fafb", borderRadius: 12, padding: 12, borderWidth: 1, borderColor: "#e5e7eb", borderStyle: "dashed" }}>
+                {/* 1. Customer Copy */}
+                {(previewTab === "both" || previewTab === "customer") && (
+                  <View style={{ backgroundColor: "#f9fafb", borderRadius: 12, padding: 12, borderWidth: 1, borderColor: "#e5e7eb", borderStyle: "dashed", marginBottom: previewTab === "both" ? 12 : 0 }}>
                     <View style={{ alignItems: "center", marginBottom: 6 }}>
                       <Text style={{ fontSize: 9, fontWeight: "800", color: "#666", textTransform: "uppercase", letterSpacing: 1, borderWidth: 1, borderColor: "#ccc", paddingHorizontal: 6, paddingVertical: 1, borderRadius: 3 }}>
                         CUSTOMER COPY - 1 & 2
@@ -617,7 +980,19 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
                     <View style={{ borderTopWidth: 1, borderStyle: "dashed", borderColor: "#999", marginVertical: 6 }} />
                     <Text style={{ fontFamily: "monospace", fontSize: 10, textAlign: "center", color: "#555" }}>{billFooter}</Text>
                   </View>
-                ) : (
+                )}
+
+                {/* Perforation line when both */}
+                {previewTab === "both" && (
+                  <View style={{ alignItems: "center", marginVertical: 6 }}>
+                    <Text style={{ color: "#9CA3AF", fontSize: 10, letterSpacing: 2 }}>
+                      ✂ - - - - - - - - - - - - - - - - - - - - - ✂
+                    </Text>
+                  </View>
+                )}
+
+                {/* 2. Cooker / Kitchen KOT Slip */}
+                {(previewTab === "both" || previewTab === "cooker") && (
                   <View style={{ backgroundColor: "#FFFBEB", borderRadius: 12, padding: 12, borderWidth: 2, borderColor: "#B45309" }}>
                     <View style={{ alignItems: "center", marginBottom: 6 }}>
                       <Text style={{ fontSize: 10, fontWeight: "900", color: "#B45309", textTransform: "uppercase", letterSpacing: 1 }}>
@@ -660,7 +1035,7 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
                 )}
 
                 <Text style={{ fontSize: 11, color: "#9CA3AF", textAlign: "center", marginTop: 8 }}>
-                  Paper size: {printerSize} · 2 Customer Bills + 1 Cooker KOT
+                  Paper size: {printerSize} · Target: {printTarget.toUpperCase()}
                 </Text>
               </ScrollView>
 
@@ -723,9 +1098,14 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
 
         <View className="bg-white rounded-xl p-4 mb-4 border border-gray-200 shadow-sm">
           <View className="flex-row items-center justify-between mb-2">
-            <Text className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-              Automatic WhatsApp (Linked Devices)
-            </Text>
+            <View>
+              <Text className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                Automatic WhatsApp (Shared Account)
+              </Text>
+              <Text className="text-[10px] text-blue-600 font-bold mt-0.5">
+                Linked for 30+ Days · Shared for All Users
+              </Text>
+            </View>
             <View className="flex-row items-center">
               <View
                 className={`w-2.5 h-2.5 rounded-full mr-1.5 ${
@@ -746,7 +1126,7 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
                 }`}
               >
                 {waStatus === "connected"
-                  ? "Connected"
+                  ? "Connected (30+ Days)"
                   : waStatus === "scan_qr"
                   ? "Waiting for Scan"
                   : "Not Linked"}
@@ -755,12 +1135,12 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
           </View>
 
           <Text className="text-xs text-gray-600 mb-2">
-            Send bills and marketing automatically from your WhatsApp without GST, Meta approval, or clicking Send.
+            Send bills and marketing automatically from this shared WhatsApp number. Every user and cashier account in the store uses this same linked WhatsApp.
           </Text>
 
-          <View className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 mb-3">
-            <Text className="text-[11px] text-amber-800 font-medium">
-              💡 <Text className="font-bold">Tip:</Text> WhatsApp Linked Devices requires a persistent server (like your Local Server or Render/Railway). If using Vercel Serverless, WebSockets may reset. You can also share bills directly to WhatsApp using the green WhatsApp button or PDF Share on every invoice!
+          <View className="bg-emerald-50 border border-emerald-200 rounded-lg p-2.5 mb-3">
+            <Text className="text-[11px] text-emerald-800 font-medium">
+              ✨ <Text className="font-bold">Multi-Device 30+ Day Linking Active:</Text> Auto-reconnects smoothly across network changes and stays linked across all devices and accounts.
             </Text>
           </View>
 
@@ -772,7 +1152,7 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
                     Linked Phone: +{waPhone || user?.whatsappNumber || user?.phone}
                   </Text>
                   <Text className="text-[11px] text-emerald-700 mt-0.5">
-                    Bills are sent automatically from this number.
+                    Shared by all accounts to deliver automatic PDF invoices.
                   </Text>
                 </View>
                 <TouchableOpacity

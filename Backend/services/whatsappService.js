@@ -3,6 +3,7 @@ import makeWASocket, {
   useMultiFileAuthState,
   Browsers,
   fetchLatestWaWebVersion,
+  makeCacheableSignalKeyStore,
 } from "@whiskeysockets/baileys";
 import pino from "pino";
 import QRCode from "qrcode";
@@ -13,7 +14,7 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Always use /tmp on Vercel, local folder otherwise
+// Session stored in persistent backend directory; shared across all users and accounts
 const SESSION_DIR = process.env.VERCEL
   ? path.join("/tmp", "whatsapp_session")
   : path.join(__dirname, "../whatsapp_session");
@@ -26,23 +27,27 @@ let isInitializing = false;
 let reconnectAttempts = 0;
 let keepAliveInterval = null;
 
-const MAX_RECONNECT_DELAY = 30000;
+const MAX_RECONNECT_DELAY = 15000;
 
 function getReconnectDelay() {
-  const delay = Math.min(3000 * Math.pow(1.5, reconnectAttempts), MAX_RECONNECT_DELAY);
+  const delay = Math.min(2000 * Math.pow(1.3, reconnectAttempts), MAX_RECONNECT_DELAY);
   reconnectAttempts++;
   return delay;
 }
 
 function startKeepAlive() {
   if (keepAliveInterval) return;
+  // Subtle socket ping every 60s to ensure socket stays alive without spamming presence
   keepAliveInterval = setInterval(async () => {
     if (sock && connectionStatus === "connected") {
       try {
-        await sock.sendPresenceUpdate("available");
+        if (sock.ws && sock.ws.readyState === 1) {
+          // Native ping
+          sock.ws.ping();
+        }
       } catch {}
     }
-  }, 25000);
+  }, 60000);
 }
 
 function stopKeepAlive() {
@@ -69,6 +74,8 @@ export const getWhatsAppStatus = () => ({
   status: connectionStatus,
   qrCode: qrCodeData,
   phoneNumber: connectedNumber,
+  isShared: true, // Shared across all accounts
+  sessionPersisted: fs.existsSync(path.join(SESSION_DIR, "creds.json")),
 });
 
 export const waitForWhatsAppQrOrReady = async (timeoutMs = 7000) => {
@@ -104,7 +111,6 @@ export const initWhatsApp = async (forceRestart = false) => {
   isInitializing = true;
 
   try {
-    // If forcing restart or starting fresh, close previous socket cleanly
     if (forceRestart) {
       safelyCloseSocket();
     }
@@ -113,44 +119,46 @@ export const initWhatsApp = async (forceRestart = false) => {
       fs.mkdirSync(SESSION_DIR, { recursive: true });
     }
 
-    // Check for corrupt un-registered state
-    const credsPath = path.join(SESSION_DIR, "creds.json");
-    if (fs.existsSync(credsPath)) {
-      try {
-        const raw = fs.readFileSync(credsPath, "utf8");
-        const creds = JSON.parse(raw);
-        if (creds?.me && creds.registered === false) {
-          console.log("[WhatsApp] Found incomplete registration in session. Clearing stale files...");
-          fs.rmSync(SESSION_DIR, { recursive: true, force: true });
-          fs.mkdirSync(SESSION_DIR, { recursive: true });
-        }
-      } catch {}
-    }
-
     const { state, saveCreds } = await useMultiFileAuthState(SESSION_DIR);
 
-    let waVersion = undefined;
+    let waVersion = [2, 3000, 1015901307];
     try {
       const v = await fetchLatestWaWebVersion();
       if (v?.version) waVersion = v.version;
     } catch {
-      // Fallback to baileys default if fetch fails
+      // Fallback
     }
 
+    const logger = pino({ level: "error" });
+
+    // Build socket using macOS Desktop client profile for 30+ day session persistence
     sock = makeWASocket({
       version: waVersion,
-      auth: state,
-      printQRInTerminal: true,
-      logger: pino({ level: "warn" }),
-      browser: Browsers.ubuntu("Chrome"),
+      auth: {
+        creds: state.creds,
+        keys: makeCacheableSignalKeyStore(state.keys, logger),
+      },
+      printQRInTerminal: false,
+      logger,
+      // macOS Desktop identification ensures WhatsApp retains multi-device token for 30+ days
+      browser: Browsers.macOS("Desktop"),
       syncFullHistory: false,
-      markOnlineOnConnect: true,
+      markOnlineOnConnect: false,
       connectTimeoutMs: 60000,
-      keepAliveIntervalMs: 25000,
+      keepAliveIntervalMs: 30000,
       defaultQueryTimeoutMs: 60000,
+      emitOwnEvents: false,
+      retryRequestDelayMs: 250,
+      maxMsgRetryCount: 5,
     });
 
-    sock.ev.on("creds.update", saveCreds);
+    sock.ev.on("creds.update", async () => {
+      try {
+        await saveCreds();
+      } catch (err) {
+        console.error("[WhatsApp] Failed to save creds:", err.message);
+      }
+    });
 
     sock.ev.on("connection.update", async (update) => {
       const { connection, lastDisconnect, qr } = update;
@@ -172,32 +180,33 @@ export const initWhatsApp = async (forceRestart = false) => {
         connectedNumber = sock.user?.id ? sock.user.id.split(":")[0].replace(/[^0-9]/g, "") : null;
         isInitializing = false;
         startKeepAlive();
-        console.log(`[WhatsApp] Successfully connected: +${connectedNumber}`);
+        console.log(`[WhatsApp] Successfully connected (Shared Account): +${connectedNumber}`);
       }
 
       if (connection === "close") {
         stopKeepAlive();
         const statusCode = lastDisconnect?.error?.output?.statusCode;
-        const isLoggedOut = statusCode === DisconnectReason.loggedOut;
+        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
         connectionStatus = "disconnected";
         connectedNumber = null;
         isInitializing = false;
 
-        if (isLoggedOut) {
-          console.log("[WhatsApp] Logged out from device. Clearing session...");
+        if (statusCode === DisconnectReason.loggedOut) {
+          console.warn("[WhatsApp] Device unlinked by user from WhatsApp. Clearing session...");
           try {
             fs.rmSync(SESSION_DIR, { recursive: true, force: true });
           } catch {}
           reconnectAttempts = 0;
-          setTimeout(() => initWhatsApp(true), 1500);
+          setTimeout(() => initWhatsApp(true), 2000);
         } else if (statusCode === DisconnectReason.restartRequired) {
-          console.log("[WhatsApp] Restart required during device linking. Reconnecting immediately...");
+          console.log("[WhatsApp] Restart required. Reconnecting immediately...");
           reconnectAttempts = 0;
           initWhatsApp(false);
         } else {
-          const delay = Math.min(2500, getReconnectDelay());
-          console.log(`[WhatsApp] Connection closed (code: ${statusCode}). Reconnecting in ${Math.round(delay / 1000)}s...`);
+          // Automatic resilient reconnect on network drops / socket timeouts
+          const delay = getReconnectDelay();
+          console.log(`[WhatsApp] Connection dropped (code: ${statusCode || "unknown"}). Auto-reconnecting in ${Math.round(delay / 1000)}s...`);
           setTimeout(() => initWhatsApp(false), delay);
         }
       }

@@ -192,10 +192,33 @@ function getReceiptStyles(receiptWidth, fontBase, isNarrow) {
       letter-spacing: 2px;
     }
     @media print {
-      body { background: #fff; padding: 0; }
-      .receipt { box-shadow: none; margin-bottom: 0; }
-      .page-break { page-break-after: always; break-after: page; }
-      .cut-line { display: block; border-top: 1px dashed #000; margin: 15px 0; padding-top: 5px; }
+      @page {
+        size: auto;
+        margin: 1mm 1mm;
+      }
+      body {
+        background: #fff;
+        padding: 0;
+        margin: 0;
+        display: block;
+      }
+      .receipt {
+        box-shadow: none;
+        margin: 0 auto;
+        width: 100% !important;
+        max-width: ${receiptWidth};
+        padding: 4px 2px;
+      }
+      .page-break {
+        page-break-after: always;
+        break-after: page;
+      }
+      .cut-line {
+        display: block;
+        border-top: 1px dashed #000;
+        margin: 10px 0;
+        padding-top: 4px;
+      }
     }
   `;
 }
@@ -374,7 +397,7 @@ export function buildReceiptHtml(invoice, storeInfo = {}, options = {}, mode = "
 
   if (mode === "single") {
     bodyContent = buildCustomerReceiptCard(invoice, storeInfo, options, "CUSTOMER COPY");
-  } else if (mode === "cooker") {
+  } else if (mode === "cooker" || mode === "kot") {
     bodyContent = buildCookerReceiptCard(invoice, storeInfo);
   } else if (mode === "customer") {
     // 2 Customer Bills
@@ -385,7 +408,7 @@ export function buildReceiptHtml(invoice, storeInfo = {}, options = {}, mode = "
       ${buildCustomerReceiptCard(invoice, storeInfo, options, "CUSTOMER COPY - 2")}
     `;
   } else {
-    // "all": 2 Customer Bills + 1 Cooker Short Bill
+    // "both" or "all": 2 Customer Bills + 1 Cooker KOT
     bodyContent = `
       ${buildCustomerReceiptCard(invoice, storeInfo, options, "CUSTOMER COPY - 1")}
       <div class="cut-line">✂ - - - - - - - - - - - - - - - - - - ✂</div>
@@ -468,4 +491,25 @@ export async function printBill(invoice, storeInfo, options, mode = "all") {
   } catch (err) {
     return { success: false, error: err.message };
   }
+}
+
+export async function printTestSlip(storeInfo = {}, options = {}, mode = null) {
+  const sampleInvoice = {
+    invoiceNumber: "TEST-01",
+    partyName: "Walk-in Cash Customer",
+    partyPhone: "9876543210",
+    createdAt: new Date().toISOString(),
+    paymentMode: "CASH",
+    items: [
+      { name: "Crispy Chicken Burger", quantity: 2, sellingPrice: 149, total: 298 },
+      { name: "Farmhouse Cheesy Pizza", quantity: 1, sellingPrice: 249, total: 249 },
+      { name: "Cold Coffee Frappe", quantity: 2, sellingPrice: 89, total: 178 },
+    ],
+    subtotal: 725,
+    regularDiscountAmount: 35,
+    regularDiscountRate: 5,
+    grandTotal: 690,
+  };
+  const targetMode = mode || options?.printTarget || "both";
+  return printBill(sampleInvoice, storeInfo, options, targetMode);
 }
