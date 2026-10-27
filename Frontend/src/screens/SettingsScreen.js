@@ -11,12 +11,13 @@ import {
   Switch,
   Platform,
   Modal,
+  Linking,
 } from "react-native";
 import { Ionicons, FontAwesome, FontAwesome5 } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import * as Updates from "expo-updates";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { api, setApiBaseUrl, getApiBaseUrl, VERCEL_API_URL } from "../config/api";
+import { api } from "../config/api";
 import {
   checkForAppUpdates,
   applyOtaUpdate,
@@ -34,7 +35,7 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
   const [address, setAddress] = useState(user?.address || "");
   const [upiId, setUpiId] = useState(user?.upiId || "");
   const [logo, setLogo] = useState(user?.logo || "");
-  const [printerSize, setPrinterSize] = useState(user?.thermalPrinterSize || "3inch");
+  const [printerSize, setPrinterSize] = useState(user?.thermalPrinterSize || "2inch");
   const [saving, setSaving] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [waStatus, setWaStatus] = useState("disconnected");
@@ -594,18 +595,27 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
           </View>
 
           {/* Bluetooth Pairing Guide */}
-          <View className="bg-blue-50 border border-blue-200 rounded-xl p-3 mt-3">
+          <View className="bg-blue-50 border border-blue-200 rounded-xl p-3.5 mt-3">
             <View className="flex-row items-center mb-1">
               <Ionicons name="information-circle" size={16} color="#2563EB" />
               <Text className="text-blue-900 font-bold text-xs ml-1">
-                Bluetooth Thermal Printer Connection Guide
+                VEER B41 / Bluetooth Thermal Printer Connection Guide
               </Text>
             </View>
             <Text className="text-[11px] text-blue-800 leading-4">
-              1. Turn ON your 58mm / 80mm thermal printer.{"\n"}
-              2. Open Phone Settings ➔ Bluetooth, scan & pair (PIN is 0000 or 1234).{"\n"}
-              3. Tap <Text className="font-bold">Test Print Slip</Text> above or print any bill. Choose your paired Bluetooth printer in the print dialog.
+              1. Turn ON your VEER B41 printer (power light on).{"\n"}
+              2. Open Phone Settings ➔ Bluetooth, scan & pair with <Text className="font-bold">B41</Text> (PIN is <Text className="font-bold">1234</Text> or <Text className="font-bold">0000</Text>).{"\n"}
+              3. To stop "Searching for printers" and enable instant 1-tap printing, install the free RawBT Bluetooth driver below.
             </Text>
+            <TouchableOpacity
+              onPress={() => Linking.openURL("https://play.google.com/store/apps/details?id=ru.a402d.rawbtprinter")}
+              className="bg-emerald-600 py-2.5 rounded-lg items-center mt-2.5 flex-row justify-center shadow-xs"
+            >
+              <Ionicons name="download-outline" size={14} color="#FFFFFF" />
+              <Text className="text-white text-xs font-bold ml-1.5">
+                Install Free VEER B41 Driver (RawBT)
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
 

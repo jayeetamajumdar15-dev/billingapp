@@ -10,6 +10,7 @@ import {
   Image,
   Modal,
   Alert,
+  Linking,
 } from "react-native";
 import {
   Ionicons,
@@ -32,7 +33,7 @@ export default function DashboardScreen({
   const [refreshing, setRefreshing] = useState(false);
   const [showBtGuide, setShowBtGuide] = useState(false);
   const [testingPrinter, setTestingPrinter] = useState(false);
-  const [printerPaperSize, setPrinterPaperSize] = useState("3inch");
+  const [printerPaperSize, setPrinterPaperSize] = useState("2inch");
 
   const fetchDashboardData = async () => {
     setLoading(true);
@@ -358,16 +359,26 @@ export default function DashboardScreen({
               </TouchableOpacity>
             </View>
 
-            <View className="bg-blue-50 border border-blue-200 rounded-xl p-3.5 mb-4">
+            <View className="bg-blue-50 border border-blue-200 rounded-xl p-3.5 mb-3">
               <Text className="text-xs font-bold text-blue-900 mb-1">
-                Easy 3-Step Pairing Steps:
+                How to Connect VEER B41 Thermal Printer:
               </Text>
               <Text className="text-xs text-blue-800 leading-5">
-                1. <Text className="font-bold">Turn ON</Text> your Bluetooth thermal printer (Blue LED on).{"\n"}
-                2. Open your <Text className="font-bold">Phone Settings ➔ Bluetooth</Text>, scan and tap your printer to pair (PIN is usually <Text className="font-bold">0000</Text> or <Text className="font-bold">1234</Text>).{"\n"}
-                3. Tap <Text className="font-bold">Test Print Slip</Text> below. Select your paired printer from the print dialog.
+                1. <Text className="font-bold">Turn ON</Text> your VEER B41 printer (power on).{"\n"}
+                2. Open phone <Text className="font-bold">Settings ➔ Bluetooth</Text>, scan & pair with <Text className="font-bold">B41</Text> (PIN is <Text className="font-bold">1234</Text> or <Text className="font-bold">0000</Text>).{"\n"}
+                3. Because VEER B41 uses Bluetooth (not Wi-Fi), install the free <Text className="font-bold">RawBT Driver</Text> below to stop "Searching for printers" and print in 1 tap!
               </Text>
             </View>
+
+            <TouchableOpacity
+              onPress={() => Linking.openURL("https://play.google.com/store/apps/details?id=ru.a402d.rawbtprinter")}
+              className="bg-emerald-600 py-2.5 rounded-xl flex-row items-center justify-center mb-3 shadow-xs"
+            >
+              <Ionicons name="download-outline" size={16} color="#FFFFFF" />
+              <Text className="text-white text-xs font-bold ml-1.5">
+                Install VEER B41 Driver (RawBT on Play Store)
+              </Text>
+            </TouchableOpacity>
 
             <View className="flex-row gap-2">
               <TouchableOpacity
