@@ -85,8 +85,28 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
         },
       ]);
     }
-    setShowItemModal(false);
+    // Don't close modal - allow adding multiple items
   };
+
+  const removeItemFromCart = (itemId) => {
+    const existing = cart.find((c) => c._id === itemId);
+    if (existing && existing.quantity > 1) {
+      setCart(
+        cart.map((c) =>
+          c._id === itemId ? { ...c, quantity: c.quantity - 1 } : c
+        )
+      );
+    } else {
+      setCart(cart.filter((c) => c._id !== itemId));
+    }
+  };
+
+  const getCartItemQty = (itemId) => {
+    const found = cart.find((c) => c._id === itemId);
+    return found ? found.quantity : 0;
+  };
+
+  const cartTotalItems = cart.reduce((sum, c) => sum + c.quantity, 0);
 
   const updateQuantity = (itemId, change) => {
     setCart((prev) =>
@@ -554,14 +574,21 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
         </View>
       </Modal>
 
-      {/* Select Item Modal */}
+      {/* Select Item Modal - Multi-Select */}
       <Modal visible={showItemModal} animationType="slide" transparent={true}>
         <View className="flex-1 bg-black/50 justify-end">
           <View className="bg-white rounded-t-3xl p-5 max-h-[85%]">
             <View className="flex-row justify-between items-center mb-3">
-              <Text className="text-base font-bold text-gray-900">
-                Add Items to Invoice
-              </Text>
+              <View className="flex-row items-center">
+                <Text className="text-base font-bold text-gray-900">
+                  Add Items to Invoice
+                </Text>
+                {cartTotalItems > 0 ? (
+                  <View className="ml-2 bg-blue-600 rounded-full w-6 h-6 items-center justify-center">
+                    <Text className="text-white text-xs font-bold">{cartTotalItems}</Text>
+                  </View>
+                ) : null}
+              </View>
               <TouchableOpacity onPress={() => setShowItemModal(false)}>
                 <Ionicons name="close" size={24} color="#6B7280" />
               </TouchableOpacity>
@@ -571,10 +598,15 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
               <Ionicons name="search" size={18} color="#9CA3AF" />
               <TextInput
                 className="flex-1 ml-2 text-sm text-gray-800"
-                placeholder="Search items..."
+                placeholder="Search items by name..."
                 value={itemSearch}
                 onChangeText={setItemSearch}
               />
+              {itemSearch ? (
+                <TouchableOpacity onPress={() => setItemSearch("")}>
+                  <Ionicons name="close-circle" size={18} color="#9CA3AF" />
+                </TouchableOpacity>
+              ) : null}
             </View>
 
             <FlatList
@@ -582,33 +614,85 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
                 i.name.toLowerCase().includes(itemSearch.toLowerCase())
               )}
               keyExtractor={(i) => i._id}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  onPress={() => addItemToCart(item)}
-                  className="flex-row items-center justify-between p-3 border-b border-gray-100 active:bg-blue-50"
-                >
-                  <View className="flex-row items-center flex-1 pr-2">
-                    {item.imageUrl ? (
-                      <Image
-                        source={{ uri: item.imageUrl }}
-                        style={{ width: 36, height: 36, borderRadius: 8, marginRight: 10 }}
-                      />
-                    ) : null}
-                    <View className="flex-1">
-                      <Text className="text-sm font-bold text-gray-900">
-                        {item.name}
-                      </Text>
-                      <Text className="text-xs text-gray-500">
-                        Stock: {item.stock} {item.unit} | Rs. {item.sellingPrice}
-                      </Text>
+              renderItem={({ item }) => {
+                const qtyInCart = getCartItemQty(item._id);
+                return (
+                  <View
+                    className={`flex-row items-center justify-between p-3 border-b border-gray-100 ${qtyInCart > 0 ? "bg-blue-50" : ""}`}
+                  >
+                    <View className="flex-row items-center flex-1 pr-2">
+                      {item.imageUrl ? (
+                        <Image
+                          source={{ uri: item.imageUrl }}
+                          style={{ width: 36, height: 36, borderRadius: 8, marginRight: 10 }}
+                        />
+                      ) : null}
+                      <View className="flex-1">
+                        <Text className="text-sm font-bold text-gray-900">
+                          {item.name}
+                        </Text>
+                        <Text className="text-xs text-gray-500">
+                          Stock: {item.stock} {item.unit} | Rs. {item.sellingPrice}
+                        </Text>
+                      </View>
                     </View>
+
+                    {qtyInCart > 0 ? (
+                      <View className="flex-row items-center">
+                        <TouchableOpacity
+                          onPress={() => removeItemFromCart(item._id)}
+                          className="w-8 h-8 rounded-lg bg-red-100 items-center justify-center"
+                        >
+                          <Ionicons name="remove" size={16} color="#DC2626" />
+                        </TouchableOpacity>
+                        <Text className="text-sm font-extrabold text-blue-900 w-8 text-center">
+                          {qtyInCart}
+                        </Text>
+                        <TouchableOpacity
+                          onPress={() => addItemToCart(item)}
+                          className="w-8 h-8 rounded-lg bg-blue-600 items-center justify-center"
+                        >
+                          <Ionicons name="add" size={16} color="#FFFFFF" />
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        onPress={() => addItemToCart(item)}
+                        className="w-8 h-8 rounded-lg bg-blue-600 items-center justify-center"
+                      >
+                        <Ionicons name="add" size={18} color="#FFFFFF" />
+                      </TouchableOpacity>
+                    )}
                   </View>
-                  <View className="w-8 h-8 rounded-lg bg-blue-600 items-center justify-center">
-                    <Ionicons name="add" size={18} color="#FFFFFF" />
-                  </View>
-                </TouchableOpacity>
-              )}
+                );
+              }}
             />
+
+            {/* Done Button with Cart Summary */}
+            <TouchableOpacity
+              onPress={() => {
+                setShowItemModal(false);
+                setItemSearch("");
+              }}
+              className={`mt-3 py-3 rounded-xl items-center justify-center flex-row ${
+                cartTotalItems > 0 ? "bg-blue-600" : "bg-gray-200"
+              }`}
+            >
+              <Ionicons
+                name="checkmark-circle"
+                size={20}
+                color={cartTotalItems > 0 ? "#FFFFFF" : "#6B7280"}
+              />
+              <Text
+                className={`font-bold text-sm ml-2 ${
+                  cartTotalItems > 0 ? "text-white" : "text-gray-600"
+                }`}
+              >
+                {cartTotalItems > 0
+                  ? `Done — ${cartTotalItems} item${cartTotalItems > 1 ? "s" : ""} added (Rs. ${subtotal})`
+                  : "Done"}
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>

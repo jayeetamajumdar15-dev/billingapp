@@ -244,7 +244,7 @@ function buildCustomerReceiptCard(invoice, storeInfo = {}, options = {}, copyTit
     paymentBreakdown = `<tr><td colspan="3" style="padding:1px 0">Cash</td><td style="text-align:right">Rs. ${invoice?.cashAmount || 0}</td></tr><tr><td colspan="3" style="padding:1px 0">UPI</td><td style="text-align:right">Rs. ${invoice?.upiAmount || 0}</td></tr>`;
   }
 
-  const logoHtml = showLogo && logo ? `<img src="${logo}" style="width:70px;height:70px;object-fit:contain;border-radius:6px;margin-bottom:4px" />` : "";
+  const logoHtml = showLogo && logo ? `<div style="text-align:center;margin-bottom:6px"><img src="${logo}" style="width:${isNarrow ? "60px" : "80px"};height:${isNarrow ? "60px" : "80px"};object-fit:contain;border-radius:6px" /></div>` : "";
   const gstinHtml = showGstin && gstin ? `<div>GSTIN: ${gstin}</div>` : "";
   const emailHtml = showEmail && email ? `<div>@: ${email}</div>` : "";
   const tokenHtml = showTokenNumber ? `<div style="font-size:${isNarrow ? "28px" : "36px"};font-weight:900;letter-spacing:2px;margin:4px 0">${tokenDisplay}</div>` : "";
@@ -265,13 +265,12 @@ function buildCustomerReceiptCard(invoice, storeInfo = {}, options = {}, copyTit
       <div class="header">
         ${logoHtml}
         <div class="store-name">${businessName}</div>
+        ${tokenHtml}
         ${address ? `<div>${address}</div>` : ""}
         ${phone ? `<div>Phone: ${phone}</div>` : ""}
         ${emailHtml}
         ${gstinHtml}
       </div>
-      <hr class="divider"/>
-      <div class="center">${tokenHtml}</div>
       <hr class="divider"/>
       <div class="meta">Bill No: ${tokenDisplay}</div>
       <div class="meta">Created On: ${createdOn}</div>
