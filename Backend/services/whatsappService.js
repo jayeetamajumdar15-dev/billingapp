@@ -131,7 +131,7 @@ export const initWhatsApp = async (forceRestart = false) => {
 
     const logger = pino({ level: "error" });
 
-    // Build socket using macOS Desktop client profile for 30+ day session persistence
+    // Use Chrome web browser profile (required by WhatsApp for pairing code acceptance)
     sock = makeWASocket({
       version: waVersion,
       auth: {
@@ -140,8 +140,7 @@ export const initWhatsApp = async (forceRestart = false) => {
       },
       printQRInTerminal: false,
       logger,
-      // macOS Desktop identification ensures WhatsApp retains multi-device token for 30+ days
-      browser: Browsers.macOS("Desktop"),
+      browser: Browsers.ubuntu("Chrome"),
       syncFullHistory: false,
       markOnlineOnConnect: false,
       connectTimeoutMs: 60000,
@@ -223,7 +222,10 @@ export const initWhatsApp = async (forceRestart = false) => {
 export function normalizeWhatsAppNumber(phone) {
   if (!phone) return "";
   let digits = phone.toString().replace(/[^0-9]/g, "");
-  digits = digits.replace(/^0+/, ""); // strip leading zeros (e.g. 09876543210 -> 9876543210)
+  digits = digits.replace(/^0+/, ""); // strip leading zeros
+  if (digits.startsWith("91") && digits.length === 12) {
+    return digits;
+  }
   if (digits.length === 10) {
     return `91${digits}`;
   }
@@ -236,36 +238,45 @@ export const requestPairingCodeForNumber = async (phoneNumber) => {
     throw new Error("Invalid phone number. Please enter a valid 10-digit mobile number.");
   }
 
-  // If already connected, disconnect first so we can link device cleanly
+  // If already connected, disconnect first
   if (connectionStatus === "connected") {
     await disconnectWhatsApp();
-    await new Promise((r) => setTimeout(r, 800));
+    await new Promise((r) => setTimeout(r, 600));
   }
 
-  // Ensure fresh initialization if socket is missing or disconnected
-  if (!sock || connectionStatus === "disconnected") {
-    await initWhatsApp(true);
-  }
+  // Clear stale session files to ensure registration keys are fresh
+  stopKeepAlive();
+  safelyCloseSocket();
+  try {
+    if (fs.existsSync(SESSION_DIR)) {
+      fs.rmSync(SESSION_DIR, { recursive: true, force: true });
+    }
+  } catch {}
+  qrCodeData = null;
+  connectionStatus = "disconnected";
+  connectedNumber = null;
+  isInitializing = false;
 
-  // Wait until socket connection has completed handshake and is ready for QR/pairing code
+  await initWhatsApp(true);
+
+  // Wait until socket connection has completed handshake and is ready for pairing code
   let waitedMs = 0;
   while ((!sock || (connectionStatus !== "scan_qr" && !qrCodeData)) && waitedMs < 16000) {
-    await new Promise((r) => setTimeout(r, 400));
-    waitedMs += 400;
+    await new Promise((r) => setTimeout(r, 350));
+    waitedMs += 350;
   }
 
   if (!sock) {
-    throw new Error("WhatsApp socket initialization failed. Please try again.");
+    throw new Error("WhatsApp connection timeout. Please try again or use QR code scan.");
   }
 
-  // Brief stabilization delay to ensure handshake is fully ready
-  await new Promise((r) => setTimeout(r, 600));
+  // Stabilization delay to ensure WebSocket handshake is fully open
+  await new Promise((r) => setTimeout(r, 800));
 
-  console.log(`[WhatsApp] Requesting pairing code for +${fullNumber}...`);
+  console.log(`[WhatsApp] Requesting fresh pairing code for +${fullNumber}...`);
   const rawCode = await sock.requestPairingCode(fullNumber);
   console.log(`[WhatsApp] Pairing code generated successfully: ${rawCode}`);
 
-  // Format as ABCD-EFGH for convenient user input into WhatsApp
   const formattedCode =
     rawCode && rawCode.length === 8
       ? `${rawCode.slice(0, 4)}-${rawCode.slice(4)}`

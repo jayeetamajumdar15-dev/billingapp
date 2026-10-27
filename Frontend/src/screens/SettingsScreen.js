@@ -188,24 +188,57 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
     }
   };
 
+  const startPairingPolling = () => {
+    let attempts = 0;
+    const interval = setInterval(async () => {
+      attempts++;
+      try {
+        const res = await api.whatsapp.getStatus();
+        if (res && res.success && res.status === "connected") {
+          clearInterval(interval);
+          setWaStatus("connected");
+          setWaPhone(res.phoneNumber);
+          setPairingCode(null);
+          setShowPairingInput(false);
+          Alert.alert(
+            "WhatsApp Linked!",
+            `Successfully connected to WhatsApp (+${res.phoneNumber || "linked"}). Automatic bill delivery is now active!`
+          );
+        }
+      } catch {}
+      if (attempts >= 30) {
+        clearInterval(interval);
+      }
+    }, 2500);
+  };
+
   const handleGetPairingCode = async () => {
-    const raw = (pairingPhone || user?.whatsappNumber || user?.phone || "7003317615").replace(/[^0-9]/g, "");
+    let raw = (pairingPhone || user?.whatsappNumber || user?.phone || "").replace(/[^0-9]/g, "");
     if (!raw) {
-      Alert.alert("Phone Required", "Please enter your WhatsApp phone number with country code (e.g. 919876543210)");
+      Alert.alert("Phone Required", "Please enter your 10-digit WhatsApp phone number");
       return;
     }
-    const fullNumber = raw.length === 10 ? `91${raw}` : raw;
+    raw = raw.replace(/^0+/, "");
+    if (raw.startsWith("91") && raw.length === 12) {
+      raw = raw.slice(2);
+    }
+    if (raw.length !== 10) {
+      Alert.alert("Invalid Phone", "Please enter a valid 10-digit mobile number (e.g. 7003317615)");
+      return;
+    }
+    const fullNumber = `91${raw}`;
     setPairingLoading(true);
     setPairingCode(null);
     try {
       const res = await api.whatsapp.getPairingCode(fullNumber);
       if (res && res.success && res.code) {
         setPairingCode(res.code);
+        startPairingPolling();
       } else {
-        Alert.alert("Error", res?.message || "Could not generate pairing code. Please try refreshing QR.");
+        Alert.alert("Notice", res?.message || "Could not generate pairing code. You can also scan the QR code above.");
       }
     } catch (err) {
-      Alert.alert("Error", err.message || "Failed to generate pairing code");
+      Alert.alert("Notice", err.message || "Failed to generate pairing code. Please try QR code scan.");
     } finally {
       setPairingLoading(false);
     }
@@ -963,21 +996,28 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
                       <Text className="text-[11px] text-emerald-800 font-bold mb-1">
                         Your WhatsApp Pairing Code:
                       </Text>
-                      <Text className="text-xl font-mono font-extrabold text-emerald-900 tracking-widest my-1 select-all">
+                      <Text className="text-2xl font-mono font-black text-emerald-900 tracking-widest my-1 select-all">
                         {pairingCode}
                       </Text>
-                      <Text className="text-[10px] text-emerald-700 text-center mt-1 mb-2">
-                        WhatsApp → Linked Devices → Link with phone number instead → Enter this code.
-                      </Text>
+                      <View className="bg-white border border-emerald-200 rounded-lg p-2.5 my-2 w-full">
+                        <Text className="text-[11px] text-gray-800 font-bold mb-0.5">
+                          How to enter in WhatsApp on your phone:
+                        </Text>
+                        <Text className="text-[10.5px] text-gray-600 leading-4">
+                          1. Open WhatsApp ➔ <Text className="font-bold">Settings (or ⋮)</Text> ➔ <Text className="font-bold">Linked Devices</Text>{"\n"}
+                          2. Tap <Text className="font-bold">Link a Device</Text> ➔ Tap <Text className="font-bold">"Link with phone number instead"</Text> at the bottom.{"\n"}
+                          3. Enter these 8 characters: <Text className="font-mono font-bold text-emerald-900">{pairingCode.replace("-", "")}</Text>
+                        </Text>
+                      </View>
                       <TouchableOpacity
                         onPress={() => {
                           fetchWaStatus();
                           Alert.alert("Checking", "Checking connection status with WhatsApp servers...");
                         }}
-                        className="bg-emerald-600 px-3 py-1.5 rounded-lg flex-row items-center"
+                        className="bg-emerald-600 px-4 py-2 rounded-lg flex-row items-center mt-1"
                       >
                         <Ionicons name="refresh" size={13} color="#FFFFFF" />
-                        <Text className="text-white text-[11px] font-bold ml-1">Check Linked Status</Text>
+                        <Text className="text-white text-[11px] font-bold ml-1.5">Check Linked Status</Text>
                       </TouchableOpacity>
                     </View>
                   ) : null}
