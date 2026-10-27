@@ -47,6 +47,7 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [sharingPdf, setSharingPdf] = useState(false);
   const [kotSent, setKotSent] = useState(false);
+  const [printingBill, setPrintingBill] = useState(false);
 
   const formatISTDate = (dateVal) => {
     try {
@@ -335,6 +336,35 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
       Alert.alert("Notice", err.message || "Failed to deliver WhatsApp message.");
     } finally {
       setSendingWa(false);
+    }
+  };
+
+  const handlePrintReceipt = async () => {
+    if (!createdInvoice) {
+      Alert.alert("Notice", "No invoice data available to print.");
+      return;
+    }
+    setPrintingBill(true);
+    try {
+      const storeData = {
+        businessName: user?.businessName || "My Store",
+        phone: user?.phone || "7003317615",
+        address: user?.address || "",
+        email: user?.email || "",
+        gstin: user?.gstin || "",
+        logo: user?.logo || "",
+      };
+      const target = printTarget === "none" ? "both" : printTarget;
+      const opts = { paperWidth: "2inch", ...billFormatOptions };
+      const res = await printBill(createdInvoice, storeData, opts, target);
+      if (res && !res.success) {
+        Alert.alert("Print Notice", res.error || "Could not print. Please check printer connection or print spooler.");
+      }
+    } catch (err) {
+      console.error("Print receipt error:", err);
+      Alert.alert("Print Notice", err.message || "Failed to trigger print.");
+    } finally {
+      setPrintingBill(false);
     }
   };
 
@@ -1116,22 +1146,26 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
 
             {/* ─── BLUETOOTH THERMAL PRINTER ACTION BUTTON ─── */}
             <TouchableOpacity
-              onPress={async () => {
-                const target = printTarget === "none" ? "both" : printTarget;
-                await printBill(createdInvoice, storeInfo, billFormatOptions, target);
-              }}
-              className="w-full bg-gray-900 py-3 rounded-xl flex-row items-center justify-center mb-3 shadow-sm"
+              onPress={handlePrintReceipt}
+              disabled={printingBill}
+              className="w-full bg-gray-900 py-3 rounded-xl flex-row items-center justify-center mb-3 shadow-sm active:bg-gray-800"
             >
-              <Ionicons name="bluetooth" size={18} color="#60A5FA" />
-              <Text className="text-white font-bold text-xs ml-2">
-                {printTarget === "both"
-                  ? "Print Both (2 Customer + 1 Cooker KOT)"
-                  : printTarget === "customer"
-                  ? "Print Customer Copies Only"
-                  : printTarget === "cooker"
-                  ? "Print Cooker KOT Slip Only"
-                  : "Thermal Print (Tap to Print Both)"}
-              </Text>
+              {printingBill ? (
+                <ActivityIndicator size="small" color="#60A5FA" />
+              ) : (
+                <>
+                  <Ionicons name="print" size={18} color="#60A5FA" />
+                  <Text className="text-white font-bold text-xs ml-2">
+                    {printTarget === "both"
+                      ? "Print Both (2 Customer + 1 Cooker KOT)"
+                      : printTarget === "customer"
+                      ? "Print Customer Copies Only"
+                      : printTarget === "cooker"
+                      ? "Print Cooker KOT Slip Only"
+                      : "Thermal Print (Tap to Print Both)"}
+                  </Text>
+                </>
+              )}
             </TouchableOpacity>
 
             {/* Next Bill / Done */}

@@ -255,7 +255,7 @@ function buildCustomerReceiptCard(invoice, storeInfo = {}, options = {}, copyTit
   } = options;
 
   const isNarrow = paperWidth === "2inch" || paperWidth === "3inch";
-  const rawToken = invoice?.invoiceNumber || invoice?.tokenNumber || "--";
+  const rawToken = String(invoice?.invoiceNumber || invoice?.tokenNumber || "--");
   const tokenDisplay = rawToken.replace(/[^0-9]/g, "") || rawToken;
 
   const itemRows = (invoice?.items || []).map((it) => {
@@ -333,7 +333,7 @@ function buildCustomerReceiptCard(invoice, storeInfo = {}, options = {}, copyTit
 
 function buildCookerReceiptCard(invoice, storeInfo = {}) {
   const { businessName = "Kitchen" } = storeInfo;
-  const rawToken = invoice?.invoiceNumber || invoice?.tokenNumber || "--";
+  const rawToken = String(invoice?.invoiceNumber || invoice?.tokenNumber || "--");
   const tokenDisplay = rawToken.replace(/[^0-9]/g, "") || rawToken;
   const createdOn = formatReceiptDate(invoice?.createdAt || invoice?.invoiceDate);
 
@@ -394,13 +394,13 @@ function buildCookerReceiptCard(invoice, storeInfo = {}) {
  * @param {string} mode: "all" (2 customer + 1 cooker) | "customer" (2 customer copies) | "cooker" (1 cooker slip) | "single" (1 customer copy)
  */
 export function buildReceiptHtml(invoice, storeInfo = {}, options = {}, mode = "all") {
-  const { paperWidth = "3inch" } = options;
+  const { paperWidth = "2inch" } = options;
   const widthMap = { "2inch": "220px", "3inch": "302px", "A4": "595px", "A5": "420px" };
-  const receiptWidth = widthMap[paperWidth] || "302px";
+  const receiptWidth = widthMap[paperWidth] || "220px";
   const isNarrow = paperWidth === "2inch" || paperWidth === "3inch";
   const fontBase = isNarrow ? "11px" : "13px";
 
-  const rawToken = invoice?.invoiceNumber || invoice?.tokenNumber || "--";
+  const rawToken = String(invoice?.invoiceNumber || invoice?.tokenNumber || "--");
   const tokenDisplay = rawToken.replace(/[^0-9]/g, "") || rawToken;
 
   let bodyContent = "";
@@ -445,11 +445,12 @@ export function buildReceiptHtml(invoice, storeInfo = {}, options = {}, mode = "
 </html>`;
 }
 
-export async function shareBillAsPdf(invoice, storeInfo, options, mode = "all") {
-  const html = buildReceiptHtml(invoice, storeInfo, options, mode);
+export async function shareBillAsPdf(invoice, storeInfo = {}, options = {}, mode = "all") {
+  try {
+    const safeOpts = { paperWidth: "2inch", ...options };
+    const html = buildReceiptHtml(invoice, storeInfo, safeOpts, mode);
 
-  if (Platform.OS === "web") {
-    try {
+    if (Platform.OS === "web") {
       const blob = new Blob([html], { type: "text/html" });
       const url = URL.createObjectURL(blob);
       const win = window.open(url, "_blank");
@@ -462,12 +463,8 @@ export async function shareBillAsPdf(invoice, storeInfo, options, mode = "all") 
         a.click();
       }
       return { success: true };
-    } catch (e) {
-      return { success: false, error: e.message };
     }
-  }
 
-  try {
     const Print = await import("expo-print");
     const Sharing = await import("expo-sharing");
     const { uri } = await Print.printToFileAsync({ html, base64: false });
@@ -481,25 +478,28 @@ export async function shareBillAsPdf(invoice, storeInfo, options, mode = "all") 
     }
     return { success: true, uri };
   } catch (err) {
-    return { success: false, error: err.message };
+    console.error("shareBillAsPdf error:", err);
+    return { success: false, error: err.message || "Failed to share receipt" };
   }
 }
 
-export async function printBill(invoice, storeInfo, options, mode = "all") {
-  const html = buildReceiptHtml(invoice, storeInfo, options, mode);
-  if (Platform.OS === "web") {
-    const blob = new Blob([html], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
-    const win = window.open(url, "_blank");
-    if (win) setTimeout(() => { try { win.print(); } catch(e){} }, 800);
-    return { success: true };
-  }
+export async function printBill(invoice, storeInfo = {}, options = {}, mode = "all") {
   try {
+    const safeOpts = { paperWidth: "2inch", ...options };
+    const html = buildReceiptHtml(invoice, storeInfo, safeOpts, mode);
+    if (Platform.OS === "web") {
+      const blob = new Blob([html], { type: "text/html" });
+      const url = URL.createObjectURL(blob);
+      const win = window.open(url, "_blank");
+      if (win) setTimeout(() => { try { win.print(); } catch(e){} }, 800);
+      return { success: true };
+    }
     const Print = await import("expo-print");
     await Print.printAsync({ html });
     return { success: true };
   } catch (err) {
-    return { success: false, error: err.message };
+    console.error("printBill error:", err);
+    return { success: false, error: err.message || "Failed to print receipt" };
   }
 }
 
