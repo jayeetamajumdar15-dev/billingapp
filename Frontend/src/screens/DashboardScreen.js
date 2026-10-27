@@ -239,12 +239,19 @@ export default function DashboardScreen({
             <ActivityIndicator size="small" color="#2563EB" />
           </View>
         ) : recentTransactions.length === 0 ? (
-          <View className="bg-white rounded-2xl p-8 items-center justify-center border border-gray-200">
-            <FontAwesome5 name="file-invoice-dollar" size={36} color="#9CA3AF" />
-            <Text className="text-gray-500 font-bold text-xs mt-3">
-              No sales yet. Tap + Sale Invoice to create your first bill!
+          <TouchableOpacity
+            onPress={onCreateInvoice}
+            activeOpacity={0.8}
+            className="bg-white rounded-2xl p-8 items-center justify-center border border-gray-200 active:bg-blue-50"
+          >
+            <FontAwesome5 name="file-invoice-dollar" size={36} color="#2563EB" />
+            <Text className="text-gray-700 font-bold text-sm mt-3">
+              No sales yet
             </Text>
-          </View>
+            <Text className="text-blue-600 font-bold text-xs mt-1">
+              Tap here or "+ Sale Invoice" below to create your first bill!
+            </Text>
+          </TouchableOpacity>
         ) : (
           recentTransactions.map((tx) => (
             <View
@@ -317,14 +324,17 @@ export default function DashboardScreen({
       </ScrollView>
 
       {/* Floating Action Button: + Sale Invoice */}
-      <View className="absolute bottom-4 left-0 right-0 items-center">
+      <View
+        pointerEvents="box-none"
+        style={{ position: "absolute", bottom: 16, left: 0, right: 0, alignItems: "center", zIndex: 50, elevation: 8 }}
+      >
         <TouchableOpacity
           onPress={onCreateInvoice}
           activeOpacity={0.85}
-          className="bg-blue-600 px-8 py-3.5 rounded-full shadow-lg shadow-blue-600/40 flex-row items-center"
+          className="bg-blue-600 px-8 py-3.5 rounded-full shadow-lg shadow-blue-600/40 flex-row items-center border border-blue-400"
         >
-          <Ionicons name="add" size={20} color="#FFFFFF" />
-          <Text className="text-white font-extrabold text-sm ml-1 uppercase tracking-wider">
+          <Ionicons name="add" size={22} color="#FFFFFF" />
+          <Text className="text-white font-extrabold text-sm ml-1.5 uppercase tracking-wider">
             Sale Invoice
           </Text>
         </TouchableOpacity>

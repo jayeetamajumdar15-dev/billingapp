@@ -126,7 +126,6 @@ export default function App() {
               user={user}
               onBack={() => setIsCreatingInvoice(false)}
               onInvoiceSaved={() => {
-                setIsCreatingInvoice(false);
                 setActiveTab("dashboard");
               }}
             />
@@ -177,14 +176,20 @@ export default function App() {
               </TouchableOpacity>
 
               <TouchableOpacity
-                onPress={() => setIsCreatingInvoice(true)}
+                onPress={() => setActiveTab("reports")}
                 className="items-center py-1 flex-1"
               >
-                <View className="w-10 h-10 -mt-5 bg-blue-600 rounded-full items-center justify-center shadow-lg border-2 border-white">
-                  <Ionicons name="add" size={24} color="#FFFFFF" />
-                </View>
-                <Text className="text-[10px] font-bold mt-0.5 text-blue-600">
-                  + Bill
+                <Ionicons
+                  name={activeTab === "reports" ? "bar-chart" : "bar-chart-outline"}
+                  size={22}
+                  color={activeTab === "reports" ? "#2563EB" : "#6B7280"}
+                />
+                <Text
+                  className={`text-[10px] font-bold mt-0.5 ${
+                    activeTab === "reports" ? "text-blue-600" : "text-gray-500"
+                  }`}
+                >
+                  Reports
                 </Text>
               </TouchableOpacity>
 

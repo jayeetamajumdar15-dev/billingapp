@@ -44,6 +44,33 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
   const [customDiscount, setCustomDiscount] = useState("");
   const [customFreebie, setCustomFreebie] = useState("");
   const [matchedCustomer, setMatchedCustomer] = useState(null);
+  const [selectedCategory, setSelectedCategory] = useState("All");
+  const [sharingPdf, setSharingPdf] = useState(false);
+  const [kotSent, setKotSent] = useState(false);
+
+  const formatISTDate = (dateVal) => {
+    try {
+      const d = new Date(dateVal || Date.now());
+      if (isNaN(d.getTime())) return "";
+      return new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Asia/Kolkata",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }).format(d).replace(",", "");
+    } catch (e) {
+      const d = new Date(dateVal || Date.now());
+      const day = String(d.getDate()).padStart(2, "0");
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const year = d.getFullYear();
+      const hours = String(d.getHours()).padStart(2, "0");
+      const minutes = String(d.getMinutes()).padStart(2, "0");
+      return `${day}/${month}/${year} ${hours}:${minutes}`;
+    }
+  };
 
   useEffect(() => {
     loadPartiesAndItems();
@@ -265,7 +292,6 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
       setWhatsappSent(Boolean(res.whatsappSent));
       setShowReceiptModal(true);
       setKotSent(false);
-      if (onInvoiceSaved) onInvoiceSaved();
 
       // Automatic printing only if printTarget is not 'none'
       if (printTarget !== "none") {
@@ -956,15 +982,7 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
                 #{createdInvoice?.invoiceNumber}
               </Text>
               <Text className="text-[11px] text-gray-500 mt-0.5">
-                Date: {new Intl.DateTimeFormat("en-GB", {
-                  timeZone: "Asia/Kolkata",
-                  day: "2-digit",
-                  month: "2-digit",
-                  year: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                  hour12: false,
-                }).format(new Date(createdInvoice?.invoiceDate || createdInvoice?.createdAt || new Date())).replace(",", "")}
+                Date: {formatISTDate(createdInvoice?.invoiceDate || createdInvoice?.createdAt)}
               </Text>
               <Text className="text-[11px] text-gray-500">
                 Customer: {createdInvoice?.partyName}
@@ -1119,7 +1137,10 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
             {/* Next Bill / Done */}
             <View className="flex-row gap-2">
               <TouchableOpacity
-                onPress={handleResetForNextBill}
+                onPress={() => {
+                  handleResetForNextBill();
+                  if (onInvoiceSaved) onInvoiceSaved();
+                }}
                 className="flex-1 bg-blue-600 py-2.5 rounded-xl items-center"
               >
                 <Text className="text-white font-bold text-xs">Start Next Bill ➔</Text>
@@ -1128,6 +1149,7 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
               <TouchableOpacity
                 onPress={() => {
                   setShowReceiptModal(false);
+                  if (onInvoiceSaved) onInvoiceSaved();
                   onBack();
                 }}
                 className="flex-1 bg-gray-100 py-2.5 rounded-xl items-center"
