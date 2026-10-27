@@ -451,7 +451,7 @@ router.post("/", async (req, res) => {
 
     // 2. Build Petpooja / Zudio Style WhatsApp Bill Text with direct Public PDF Link
     const business = req.user;
-    const backendBase = process.env.BACKEND_PUBLIC_URL || "https://billing-app-backend-lake.vercel.app";
+    const backendBase = process.env.BACKEND_PUBLIC_URL || "https://billingapp-backend-hcan.onrender.com";
     const publicPdfUrl = `${backendBase}/api/invoices/public/${invoice._id}/pdf`;
 
     const itemsSummary = processedItems

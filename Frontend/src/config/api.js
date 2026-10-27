@@ -4,19 +4,22 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 const TOKEN_KEY = "billing_auth_token";
 const USER_KEY = "billing_user_data";
 let authToken = null;
-export const VERCEL_API_URL = "https://billing-app-backend-lake.vercel.app/api";
-export const CLOUDFLARE_API_URL = VERCEL_API_URL;
-export const DEFAULT_API_URL = VERCEL_API_URL;
+export const RENDER_API_URL = "https://billingapp-backend-hcan.onrender.com/api";
+export const VERCEL_API_URL = RENDER_API_URL; // kept for compatibility
+export const CLOUDFLARE_API_URL = RENDER_API_URL;
+export const DEFAULT_API_URL = RENDER_API_URL;
 let currentBaseUrl = DEFAULT_API_URL;
 const API_URL_KEY = "billing_api_url";
 
-// ALWAYS FORCE VERCEL API URL - completely clears out any old Cloudflare or localhost cache
+// ALWAYS FORCE RENDER API URL - clears any old Vercel/Cloudflare/localhost cache
 currentBaseUrl = DEFAULT_API_URL;
 if (typeof localStorage !== "undefined") {
   try {
+    localStorage.removeItem(API_URL_KEY); // clear old cached URL
     localStorage.setItem(API_URL_KEY, DEFAULT_API_URL);
   } catch {}
 }
+AsyncStorage.removeItem(API_URL_KEY).catch(() => {}); // clear old cached URL
 AsyncStorage.setItem(API_URL_KEY, DEFAULT_API_URL).catch(() => {});
 
 export const setAuthToken = (token, user = null) => {
