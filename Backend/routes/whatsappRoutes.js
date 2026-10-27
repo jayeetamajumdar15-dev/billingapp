@@ -1,5 +1,6 @@
 import express from "express";
 import { protect } from "../middleware/authMiddleware.js";
+import User from "../models/User.js";
 import {
   getWhatsAppStatus,
   waitForWhatsAppQrOrReady,
@@ -18,17 +19,22 @@ router.get("/status", async (req, res) => {
 
   // Determine user-specific WhatsApp linking status
   let userStatus = "disconnected";
-  let userPhone = user.whatsappLinkedNumber || null;
+  let userPhone = user?.whatsappLinkedNumber || null;
 
   if (globalStatus.status === "connected") {
     // If user has confirmed linked or global is connected
-    if (user.whatsappLinked || !user.whatsappLinkedNumber) {
+    if (user?.whatsappLinked || !user?.whatsappLinkedNumber) {
       userStatus = "connected";
-      userPhone = globalStatus.phoneNumber || user.whatsappLinkedNumber;
-      if (!user.whatsappLinked) {
+      userPhone = globalStatus.phoneNumber || user?.whatsappLinkedNumber;
+      if (user && !user.whatsappLinked) {
         user.whatsappLinked = true;
         user.whatsappLinkedNumber = userPhone;
-        await user.save().catch(() => {});
+        if (user._id) {
+          await User.findByIdAndUpdate(user._id, {
+            whatsappLinked: true,
+            whatsappLinkedNumber: userPhone,
+          }).catch(() => {});
+        }
       }
     }
   } else if (globalStatus.status === "scan_qr") {
@@ -59,9 +65,11 @@ router.post("/pairing-code", async (req, res) => {
   try {
     const { requestPairingCodeForNumber } = await import("../services/whatsappService.js");
     const code = await requestPairingCodeForNumber(phone);
-    if (req.user) {
+    if (req.user && req.user._id) {
       req.user.whatsappLinkedNumber = phone;
-      await req.user.save().catch(() => {});
+      await User.findByIdAndUpdate(req.user._id, {
+        whatsappLinkedNumber: phone,
+      }).catch(() => {});
     }
     return res.status(200).json({ success: true, code });
   } catch (err) {
@@ -71,10 +79,13 @@ router.post("/pairing-code", async (req, res) => {
 
 router.post("/disconnect", async (req, res) => {
   // Mark this specific user as disconnected
-  if (req.user) {
+  if (req.user && req.user._id) {
     req.user.whatsappLinked = false;
     req.user.whatsappLinkedNumber = "";
-    await req.user.save().catch(() => {});
+    await User.findByIdAndUpdate(req.user._id, {
+      whatsappLinked: false,
+      whatsappLinkedNumber: "",
+    }).catch(() => {});
   }
   const result = await disconnectWhatsApp();
   return res.status(200).json({ success: true, status: "disconnected" });

@@ -35,7 +35,6 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
   const [upiId, setUpiId] = useState(user?.upiId || "");
   const [logo, setLogo] = useState(user?.logo || "");
   const [printerSize, setPrinterSize] = useState(user?.thermalPrinterSize || "3inch");
-  const [customApiUrl, setCustomApiUrl] = useState(VERCEL_API_URL);
   const [saving, setSaving] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [waStatus, setWaStatus] = useState("disconnected");
@@ -814,61 +813,14 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
           </View>
         </Modal>
 
-        <View className="bg-white rounded-xl p-4 mb-6 border border-emerald-300 bg-emerald-50/20 shadow-sm">
-          <View className="flex-row items-center justify-between mb-2">
-            <Text className="text-xs font-bold text-gray-700 uppercase tracking-wider">
-              Backend Server Endpoint (Vercel)
-            </Text>
-            <View className="bg-emerald-100 px-2.5 py-0.5 rounded-full flex-row items-center">
-              <View className="w-2 h-2 rounded-full bg-emerald-600 mr-1.5" />
-              <Text className="text-[10px] font-bold text-emerald-800">Vercel Cloud Active</Text>
-            </View>
-          </View>
-          <Text className="text-xs text-gray-500 mb-2">
-            All app requests, WhatsApp PDF bills, and reports are routed through this 24/7 Vercel cloud server.
-          </Text>
-          <TextInput
-            className="bg-white border border-emerald-300 rounded-xl px-4 py-2.5 text-sm text-gray-800 font-medium"
-            placeholder="https://billingapp-backend-hcan.onrender.com/api"
-            value={customApiUrl}
-            onChangeText={setCustomApiUrl}
-            autoCapitalize="none"
-          />
-
-          <View className="flex-row gap-2 mt-3">
-            <TouchableOpacity
-              onPress={() => {
-                setCustomApiUrl(VERCEL_API_URL);
-                setApiBaseUrl(VERCEL_API_URL);
-                fetchWaStatus();
-                Alert.alert("Vercel Cloud Set", "API endpoint updated to Vercel Cloud Server.");
-              }}
-              className="flex-1 bg-emerald-600 py-2.5 rounded-xl items-center shadow-sm"
-            >
-              <Text className="text-white text-xs font-bold">Use Vercel Cloud Server</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => {
-                setApiBaseUrl(customApiUrl.trim());
-                fetchWaStatus();
-                Alert.alert("Saved", `Connected to: ${customApiUrl.trim()}`);
-              }}
-              className="flex-1 bg-gray-900 py-2.5 rounded-xl items-center shadow-sm"
-            >
-              <Text className="text-white text-xs font-bold">Save Endpoint</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
         <View className="bg-white rounded-xl p-4 mb-4 border border-gray-200 shadow-sm">
           <View className="flex-row items-center justify-between mb-2">
             <View>
-              <Text className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-                Automatic WhatsApp (Shared Account)
+              <Text className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+                WhatsApp Invoice Delivery
               </Text>
-              <Text className="text-[10px] text-blue-600 font-bold mt-0.5">
-                Linked for 30+ Days · Shared for All Users
+              <Text className="text-[10px] text-gray-500 mt-0.5">
+                Automatically send PDF bills to customers
               </Text>
             </View>
             <View className="flex-row items-center">
@@ -891,23 +843,17 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
                 }`}
               >
                 {waStatus === "connected"
-                  ? "Connected (30+ Days)"
+                  ? "Linked & Active"
                   : waStatus === "scan_qr"
-                  ? "Waiting for Scan"
+                  ? "Scan QR Code"
                   : "Not Linked"}
               </Text>
             </View>
           </View>
 
-          <Text className="text-xs text-gray-600 mb-2">
-            Send bills and marketing automatically from this shared WhatsApp number. Every user and cashier account in the store uses this same linked WhatsApp.
+          <Text className="text-xs text-gray-600 mb-3">
+            Link your WhatsApp number to deliver digital PDF bills and receipts directly to your customers.
           </Text>
-
-          <View className="bg-emerald-50 border border-emerald-200 rounded-lg p-2.5 mb-3">
-            <Text className="text-[11px] text-emerald-800 font-medium">
-              ✨ <Text className="font-bold">Multi-Device 30+ Day Linking Active:</Text> Auto-reconnects smoothly across network changes and stays linked across all devices and accounts.
-            </Text>
-          </View>
 
           {waStatus === "connected" ? (
             <View className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-2">
@@ -917,7 +863,7 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
                     Linked Phone: +{waPhone || user?.whatsappNumber || user?.phone}
                   </Text>
                   <Text className="text-[11px] text-emerald-700 mt-0.5">
-                    Shared by all accounts to deliver automatic PDF invoices.
+                    Ready to send automatic PDF invoices.
                   </Text>
                 </View>
                 <TouchableOpacity
