@@ -4,7 +4,7 @@ import Item from "../models/Item.js";
 import Party from "../models/Party.js";
 import User from "../models/User.js";
 import { protect } from "../middleware/authMiddleware.js";
-import { sendWhatsAppMessage, sendWhatsAppDocument } from "../services/whatsappService.js";
+import { sendWhatsAppMessage, sendWhatsAppDocument, normalizeWhatsAppNumber } from "../services/whatsappService.js";
 import { generateInvoicePdfBuffer } from "../services/pdfService.js";
 
 const router = express.Router();
@@ -287,24 +287,40 @@ router.post("/", async (req, res) => {
     let regularDiscountPercent = 0;
     let freebieItem = "";
 
+    // Normalize phone number inputs
+    const typedDigits = (partyPhone || "").toString().replace(/[^0-9]/g, "").replace(/^0+/, "");
+    const tenDigitPhone = typedDigits.length >= 10 ? typedDigits.slice(-10) : typedDigits;
+
     if (partyId) {
       customer = await Party.findOne({ _id: partyId, userId: req.user._id });
-    } else if (partyPhone) {
-      const cleanPhone = partyPhone.replace(/[^0-9]/g, "");
-      if (cleanPhone.length >= 10) {
-        customer = await Party.findOne({ userId: req.user._id, phone: cleanPhone });
-        if (!customer) {
-          customer = await Party.create({
-            userId: req.user._id,
-            name: partyName && partyName.trim() !== "Walk-in Customer" ? partyName.trim() : `Customer ${cleanPhone.slice(-4)}`,
-            phone: cleanPhone,
-            whatsappNumber: cleanPhone,
-            type: "customer",
-          });
-        } else if (partyName && partyName.trim() !== "Walk-in Customer" && customer.name.startsWith("Customer ")) {
-          customer.name = partyName.trim();
-          await customer.save();
-        }
+      // If customer phone is empty or merchant typed an updated phone, save it
+      if (customer && tenDigitPhone && (!customer.phone || customer.phone !== tenDigitPhone)) {
+        customer.phone = tenDigitPhone;
+        customer.whatsappNumber = tenDigitPhone;
+        await customer.save();
+      }
+    } else if (tenDigitPhone && tenDigitPhone.length === 10) {
+      // Find customer by 10 digits or 91-prefixed digits
+      customer = await Party.findOne({
+        userId: req.user._id,
+        $or: [
+          { phone: tenDigitPhone },
+          { phone: `91${tenDigitPhone}` },
+          { whatsappNumber: tenDigitPhone },
+          { whatsappNumber: `91${tenDigitPhone}` },
+        ],
+      });
+      if (!customer) {
+        customer = await Party.create({
+          userId: req.user._id,
+          name: partyName && partyName.trim() !== "Walk-in Customer" ? partyName.trim() : `Customer ${tenDigitPhone.slice(-4)}`,
+          phone: tenDigitPhone,
+          whatsappNumber: tenDigitPhone,
+          type: "customer",
+        });
+      } else if (partyName && partyName.trim() !== "Walk-in Customer" && customer.name.startsWith("Customer ")) {
+        customer.name = partyName.trim();
+        await customer.save();
       }
     }
 
@@ -396,11 +412,16 @@ router.post("/", async (req, res) => {
       finalUpi = grandTotal;
     }
 
-    const destinationPhone = customer
-      ? customer.whatsappNumber || customer.phone
-      : partyPhone
-      ? partyPhone.replace(/[^0-9]/g, "")
-      : "";
+    // Priority for WhatsApp delivery: merchant typed phone > customer.whatsappNumber > customer.phone
+    let rawDestination = "";
+    if (tenDigitPhone && tenDigitPhone.length === 10) {
+      rawDestination = tenDigitPhone;
+    } else if (customer) {
+      rawDestination = customer.whatsappNumber || customer.phone || "";
+    } else if (partyPhone) {
+      rawDestination = partyPhone;
+    }
+    const destinationPhone = normalizeWhatsAppNumber(rawDestination);
 
     // 1. Create Invoice Record First to obtain invoice._id
     const invoice = await Invoice.create({
@@ -521,10 +542,8 @@ router.post("/", async (req, res) => {
       }
     }
 
-    const cleanDigits = (destinationPhone || "").replace(/[^0-9]/g, "");
-    const waPhone = cleanDigits.length === 10 ? `91${cleanDigits}` : cleanDigits;
-    const whatsappUrl = waPhone
-      ? `https://wa.me/${waPhone}?text=${encodeURIComponent(whatsappText)}`
+    const whatsappUrl = destinationPhone
+      ? `https://wa.me/${destinationPhone}?text=${encodeURIComponent(whatsappText)}`
       : "";
 
     return res.status(201).json({
@@ -543,6 +562,100 @@ router.post("/", async (req, res) => {
       message: "Failed to create invoice",
       error: error.message,
     });
+  }
+});
+
+router.post("/:id/send-whatsapp", async (req, res) => {
+  try {
+    const invoice = await Invoice.findOne({ _id: req.params.id, userId: req.user._id });
+    if (!invoice) {
+      return res.status(404).json({ success: false, message: "Invoice not found" });
+    }
+
+    const targetPhone = normalizeWhatsAppNumber(
+      req.body.phone || invoice.partyPhone || ""
+    );
+
+    if (!targetPhone || targetPhone.length < 10) {
+      return res.status(400).json({
+        success: false,
+        message: "Customer phone number is required to send WhatsApp bill",
+      });
+    }
+
+    const business = req.user;
+    const backendBase = process.env.BACKEND_PUBLIC_URL || "https://billingapp-backend-hcan.onrender.com";
+    const publicPdfUrl = `${backendBase}/api/invoices/public/${invoice._id}/pdf`;
+
+    const itemsSummary = (invoice.items || [])
+      .map((it) => `• ${it.name} x ${it.quantity} = Rs.${it.total}`)
+      .join("\n");
+
+    const dateFormatted = new Date(invoice.createdAt || invoice.invoiceDate).toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    const whatsappText =
+      `🧾 *TAX INVOICE / BILL*\n` +
+      `*${(business.businessName || "STORE").toUpperCase()}*\n` +
+      `----------------------------------------\n` +
+      `Dear *${invoice.partyName || "Customer"}*,\n` +
+      `Thank you for shopping with us! Here is your bill:\n\n` +
+      `📋 *Bill No:* #${invoice.invoiceNumber}\n` +
+      `📅 *Date:* ${dateFormatted}\n` +
+      `💳 *Payment:* ${invoice.paymentMode} (${invoice.paymentStatus})\n` +
+      `💰 *Grand Total:* *Rs. ${invoice.grandTotal}*\n` +
+      `----------------------------------------\n` +
+      `${itemsSummary}\n` +
+      `----------------------------------------\n` +
+      `Subtotal: Rs.${invoice.subtotal}\n` +
+      (invoice.discountTotal > 0 ? `Discount: -Rs.${invoice.discountTotal}\n` : "") +
+      `----------------------------------------\n` +
+      `📥 *Download / View PDF Bill:*\n` +
+      `${publicPdfUrl}\n` +
+      `----------------------------------------\n` +
+      `📎 Your official PDF bill is attached.\n` +
+      `🙏 Thank you! Visit again.\n` +
+      `📞 Helpline: ${business.phone || business.whatsappNumber || "7003317615"}`;
+
+    let pdfBuffer = null;
+    try {
+      pdfBuffer = await generateInvoicePdfBuffer(invoice, business);
+    } catch (e) {
+      console.warn("PDF generation warning:", e.message);
+    }
+
+    const sent = await sendAutomaticWhatsAppBill(
+      targetPhone,
+      whatsappText,
+      pdfBuffer,
+      invoice.invoiceNumber,
+      business.businessName || "THE A POP JAKO BITES"
+    );
+
+    if (sent) {
+      invoice.whatsappSent = true;
+      if (!invoice.partyPhone) invoice.partyPhone = targetPhone;
+      await invoice.save();
+    }
+
+    const whatsappUrl = `https://wa.me/${targetPhone}?text=${encodeURIComponent(whatsappText)}`;
+
+    return res.status(200).json({
+      success: true,
+      whatsappSent: sent,
+      whatsappUrl,
+      message: sent
+        ? "Invoice delivered successfully via WhatsApp!"
+        : "WhatsApp socket not linked. Use the pre-filled WhatsApp link to share.",
+    });
+  } catch (error) {
+    console.error("Send WhatsApp bill error:", error.message);
+    return res.status(500).json({ success: false, message: error.message });
   }
 });
 

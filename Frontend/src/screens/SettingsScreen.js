@@ -112,7 +112,7 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
 
   useEffect(() => {
     let interval = null;
-    if (waStatus === "scan_qr" || waLoading) {
+    if (waStatus === "scan_qr" || waLoading || pairingCode) {
       interval = setInterval(() => {
         fetchWaStatus();
       }, 3000);
@@ -120,7 +120,7 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [waStatus, waLoading]);
+  }, [waStatus, waLoading, pairingCode]);
 
   const handleStartWaLink = async (force = false) => {
     setWaLoading(true);
@@ -862,12 +862,22 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
                       <Text className="text-[11px] text-emerald-800 font-bold mb-1">
                         Your WhatsApp Pairing Code:
                       </Text>
-                      <Text className="text-xl font-mono font-extrabold text-emerald-900 tracking-widest my-1">
+                      <Text className="text-xl font-mono font-extrabold text-emerald-900 tracking-widest my-1 select-all">
                         {pairingCode}
                       </Text>
-                      <Text className="text-[10px] text-emerald-700 text-center mt-1">
+                      <Text className="text-[10px] text-emerald-700 text-center mt-1 mb-2">
                         WhatsApp → Linked Devices → Link with phone number instead → Enter this code.
                       </Text>
+                      <TouchableOpacity
+                        onPress={() => {
+                          fetchWaStatus();
+                          Alert.alert("Checking", "Checking connection status with WhatsApp servers...");
+                        }}
+                        className="bg-emerald-600 px-3 py-1.5 rounded-lg flex-row items-center"
+                      >
+                        <Ionicons name="refresh" size={13} color="#FFFFFF" />
+                        <Text className="text-white text-[11px] font-bold ml-1">Check Linked Status</Text>
+                      </TouchableOpacity>
                     </View>
                   ) : null}
                 </View>

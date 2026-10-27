@@ -219,6 +219,11 @@ export const api = {
         method: "POST",
         body: JSON.stringify(payload),
       }),
+    sendWhatsApp: (id, phone = "") =>
+      request(`/invoices/${id}/send-whatsapp`, {
+        method: "POST",
+        body: JSON.stringify({ phone }),
+      }),
   },
   whatsapp: {
     getStatus: () => request("/whatsapp/status"),

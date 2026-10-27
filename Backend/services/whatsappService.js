@@ -211,21 +211,58 @@ export const initWhatsApp = async (forceRestart = false) => {
   }
 };
 
-export const requestPairingCodeForNumber = async (phoneNumber) => {
-  if (!sock || connectionStatus !== "scan_qr") {
-    await initWhatsApp(true);
-    // wait for socket ready
-    let attempts = 0;
-    while (!sock && attempts < 10) {
-      await new Promise((r) => setTimeout(r, 500));
-      attempts++;
-    }
+export function normalizeWhatsAppNumber(phone) {
+  if (!phone) return "";
+  let digits = phone.toString().replace(/[^0-9]/g, "");
+  digits = digits.replace(/^0+/, ""); // strip leading zeros (e.g. 09876543210 -> 9876543210)
+  if (digits.length === 10) {
+    return `91${digits}`;
   }
-  const clean = phoneNumber.toString().replace(/[^0-9]/g, "");
-  if (!clean) throw new Error("Invalid phone number");
-  const fullNumber = clean.length === 10 ? `91${clean}` : clean;
-  const code = await sock.requestPairingCode(fullNumber);
-  return code;
+  return digits;
+}
+
+export const requestPairingCodeForNumber = async (phoneNumber) => {
+  const fullNumber = normalizeWhatsAppNumber(phoneNumber);
+  if (!fullNumber || fullNumber.length < 10) {
+    throw new Error("Invalid phone number. Please enter a valid 10-digit mobile number.");
+  }
+
+  // If already connected, disconnect first so we can link device cleanly
+  if (connectionStatus === "connected") {
+    await disconnectWhatsApp();
+    await new Promise((r) => setTimeout(r, 800));
+  }
+
+  // Ensure fresh initialization if socket is missing or disconnected
+  if (!sock || connectionStatus === "disconnected") {
+    await initWhatsApp(true);
+  }
+
+  // Wait until socket connection has completed handshake and is ready for QR/pairing code
+  let waitedMs = 0;
+  while ((!sock || (connectionStatus !== "scan_qr" && !qrCodeData)) && waitedMs < 16000) {
+    await new Promise((r) => setTimeout(r, 400));
+    waitedMs += 400;
+  }
+
+  if (!sock) {
+    throw new Error("WhatsApp socket initialization failed. Please try again.");
+  }
+
+  // Brief stabilization delay to ensure handshake is fully ready
+  await new Promise((r) => setTimeout(r, 600));
+
+  console.log(`[WhatsApp] Requesting pairing code for +${fullNumber}...`);
+  const rawCode = await sock.requestPairingCode(fullNumber);
+  console.log(`[WhatsApp] Pairing code generated successfully: ${rawCode}`);
+
+  // Format as ABCD-EFGH for convenient user input into WhatsApp
+  const formattedCode =
+    rawCode && rawCode.length === 8
+      ? `${rawCode.slice(0, 4)}-${rawCode.slice(4)}`
+      : rawCode;
+
+  return formattedCode;
 };
 
 export const disconnectWhatsApp = async () => {
@@ -253,13 +290,25 @@ export const sendWhatsAppMessage = async (recipientPhone, textMessage) => {
   }
 
   try {
-    const clean = recipientPhone.toString().replace(/[^0-9]/g, "");
-    if (!clean) return { success: false, message: "Invalid phone number" };
-    const fullNumber = clean.length === 10 ? `91${clean}` : clean;
-    const jid = `${fullNumber}@s.whatsapp.net`;
+    const fullNumber = normalizeWhatsAppNumber(recipientPhone);
+    if (!fullNumber || fullNumber.length < 10) {
+      return { success: false, message: "Invalid phone number" };
+    }
+
+    let jid = `${fullNumber}@s.whatsapp.net`;
+    try {
+      if (sock && typeof sock.onWhatsApp === "function") {
+        const [waCheck] = await sock.onWhatsApp(fullNumber);
+        if (waCheck?.exists && waCheck.jid) {
+          jid = waCheck.jid;
+        }
+      }
+    } catch {}
+
     await sock.sendMessage(jid, { text: textMessage });
     return { success: true };
   } catch (error) {
+    console.error(`[WhatsApp] Failed to send message to ${recipientPhone}:`, error.message);
     return { success: false, message: error.message };
   }
 };
@@ -271,24 +320,36 @@ export const sendWhatsAppDocument = async (recipientPhone, documentBuffer, fileN
   }
 
   try {
-    const clean = recipientPhone.toString().replace(/[^0-9]/g, "");
-    if (!clean) return { success: false, message: "Invalid phone number" };
-    const fullNumber = clean.length === 10 ? `91${clean}` : clean;
-    const jid = `${fullNumber}@s.whatsapp.net`;
+    const fullNumber = normalizeWhatsAppNumber(recipientPhone);
+    if (!fullNumber || fullNumber.length < 10) {
+      return { success: false, message: "Invalid phone number" };
+    }
+
+    let jid = `${fullNumber}@s.whatsapp.net`;
+    try {
+      if (sock && typeof sock.onWhatsApp === "function") {
+        const [waCheck] = await sock.onWhatsApp(fullNumber);
+        if (waCheck?.exists && waCheck.jid) {
+          jid = waCheck.jid;
+        }
+      }
+    } catch {}
+
     const finalBuffer = Buffer.isBuffer(documentBuffer) ? documentBuffer : Buffer.from(documentBuffer);
     
-    console.log(`[WhatsApp] Sending PDF document (${finalBuffer.length} bytes) to +${fullNumber}...`);
+    console.log(`[WhatsApp] Sending PDF document (${finalBuffer.length} bytes) to ${jid}...`);
     await sock.sendMessage(jid, {
       document: finalBuffer,
       mimetype: "application/pdf",
       fileName: fileName || "Invoice.pdf",
       caption: caption || "",
     });
-    console.log(`[WhatsApp] PDF document successfully delivered to +${fullNumber}`);
+    console.log(`[WhatsApp] PDF document successfully delivered to ${jid}`);
     return { success: true };
   } catch (error) {
     console.error(`[WhatsApp] Failed to send PDF document to ${recipientPhone}:`, error.message);
     return { success: false, message: error.message };
   }
 };
+
 

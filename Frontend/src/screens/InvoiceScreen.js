@@ -36,6 +36,8 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
   const [createdInvoice, setCreatedInvoice] = useState(null);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [whatsappUrl, setWhatsappUrl] = useState("");
+  const [whatsappSent, setWhatsappSent] = useState(false);
+  const [sendingWa, setSendingWa] = useState(false);
   const [billFormatOptions, setBillFormatOptions] = useState({});
   const [sharingPdf, setSharingPdf] = useState(false);
 
@@ -190,10 +192,35 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
     if (res.success && res.invoice) {
       setCreatedInvoice(res.invoice);
       setWhatsappUrl(res.whatsappUrl || "");
+      setWhatsappSent(Boolean(res.whatsappSent));
       setShowReceiptModal(true);
       if (onInvoiceSaved) onInvoiceSaved();
     } else {
       Alert.alert("Billing Failed", res.message || "Could not generate invoice");
+    }
+  };
+
+  const handleResendWhatsApp = async () => {
+    if (!createdInvoice?._id) return;
+    setSendingWa(true);
+    try {
+      const res = await api.invoices.sendWhatsApp(
+        createdInvoice._id,
+        createdInvoice.partyPhone || customerPhone
+      );
+      if (res.success && res.whatsappSent) {
+        setWhatsappSent(true);
+        Alert.alert("Delivered", "Invoice PDF delivered directly to customer's WhatsApp!");
+      } else if (res.whatsappUrl) {
+        setWhatsappUrl(res.whatsappUrl);
+        Linking.openURL(res.whatsappUrl);
+      } else {
+        Alert.alert("Notice", res.message || "Could not send directly. Please use Share PDF button.");
+      }
+    } catch (err) {
+      Alert.alert("Notice", err.message || "Failed to deliver WhatsApp message.");
+    } finally {
+      setSendingWa(false);
     }
   };
 
@@ -673,6 +700,34 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
                 </View>
               ) : null}
             </View>
+
+            {whatsappSent ? (
+              <View className="w-full bg-emerald-50 border border-emerald-300 rounded-xl p-2.5 mb-2.5 flex-row items-center justify-center">
+                <Ionicons name="checkmark-circle" size={17} color="#059669" />
+                <Text className="text-emerald-800 font-bold text-xs ml-1.5">
+                  PDF Bill Sent Directly to Customer's WhatsApp!
+                </Text>
+              </View>
+            ) : null}
+
+            {!whatsappSent && (createdInvoice?.partyPhone || customerPhone) ? (
+              <TouchableOpacity
+                onPress={handleResendWhatsApp}
+                disabled={sendingWa}
+                className="w-full bg-emerald-600 py-3 rounded-xl flex-row items-center justify-center mb-2.5 shadow"
+              >
+                {sendingWa ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <FontAwesome5 name="whatsapp" size={18} color="#FFFFFF" />
+                    <Text className="text-white font-extrabold text-xs ml-2">
+                      Send PDF Bill via WhatsApp
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            ) : null}
 
             {/* Share Official Backend PDF (Zudio / Petpooja style — Primary) */}
             <TouchableOpacity
