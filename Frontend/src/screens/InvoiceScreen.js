@@ -41,9 +41,9 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
   const [sendingWa, setSendingWa] = useState(false);
   const [billFormatOptions, setBillFormatOptions] = useState({});
   const [printTarget, setPrintTarget] = useState("both"); // "both" | "customer" | "kot"
-  const [sharingPdf, setSharingPdf] = useState(false);
-  const [kotSent, setKotSent] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState("All");
+  const [customDiscount, setCustomDiscount] = useState("");
+  const [customFreebie, setCustomFreebie] = useState("");
+  const [matchedCustomer, setMatchedCustomer] = useState(null);
 
   useEffect(() => {
     loadPartiesAndItems();
@@ -135,13 +135,42 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
     0
   );
 
-  const regularDiscountRate =
-    selectedParty && selectedParty.isRegular
-      ? selectedParty.customDiscountPercent || 0
-      : 0;
+  // Live search/match customer by phone number as merchant types
+  const handlePhoneChange = (val) => {
+    setCustomerPhone(val);
+    const clean = val.replace(/[^0-9]/g, "");
+    if (clean.length >= 4) {
+      const matched = parties.find(
+        (p) =>
+          (p.phone && p.phone.slice(-10) === clean.slice(-10)) ||
+          (p.whatsappNumber && p.whatsappNumber.slice(-10) === clean.slice(-10)) ||
+          (p.phone && p.phone.includes(clean))
+      );
+      if (matched) {
+        setMatchedCustomer(matched);
+        if (customerName === "Walk-in Customer" || !customerName.trim()) {
+          setCustomerName(matched.name);
+        }
+        if (matched.customDiscountPercent && !customDiscount) {
+          setCustomDiscount(matched.customDiscountPercent.toString());
+        }
+        if (matched.assignedFreebie && !customFreebie) {
+          setCustomFreebie(matched.assignedFreebie);
+        }
+        return;
+      }
+    }
+    if (!selectedParty) {
+      setMatchedCustomer(null);
+    }
+  };
+
+  const activeCustomer = selectedParty || matchedCustomer;
+
+  const appliedDiscountPercent = Number(customDiscount) || (activeCustomer?.customDiscountPercent || 0);
 
   const regularDiscountAmount = Math.round(
-    (subtotal * regularDiscountRate) / 100
+    (subtotal * appliedDiscountPercent) / 100
   );
 
   const grandTotal = Math.max(0, subtotal - regularDiscountAmount);
@@ -165,12 +194,22 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
   const handleSelectParty = (party) => {
     if (!party) {
       setSelectedParty(null);
+      setMatchedCustomer(null);
       setCustomerName("Walk-in Customer");
       setCustomerPhone("");
+      setCustomDiscount("");
+      setCustomFreebie("");
     } else {
       setSelectedParty(party);
+      setMatchedCustomer(party);
       setCustomerName(party.name);
       setCustomerPhone(party.whatsappNumber || party.phone || "");
+      if (party.customDiscountPercent) {
+        setCustomDiscount(party.customDiscountPercent.toString());
+      }
+      if (party.assignedFreebie) {
+        setCustomFreebie(party.assignedFreebie);
+      }
     }
     setShowPartyModal(false);
   };
@@ -198,12 +237,14 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
     const cleanPhone = customerPhone.replace(/[^0-9]/g, "");
 
     const payload = {
-      partyId: selectedParty ? selectedParty._id : undefined,
+      partyId: activeCustomer ? activeCustomer._id : undefined,
       partyName: customerName.trim() || "Walk-in Customer",
       partyPhone: cleanPhone || undefined,
       paymentMode,
       cashAmount: paymentMode === "UPI/CASH" ? Number(cashAmount) || 0 : undefined,
       upiAmount: paymentMode === "UPI/CASH" ? Number(upiAmount) || 0 : undefined,
+      customDiscountPercent: Number(customDiscount) || (activeCustomer?.customDiscountPercent || 0),
+      customFreebieItem: customFreebie.trim() || (activeCustomer?.assignedFreebie || ""),
       items: cart.map((c) => ({
         itemId: c._id,
         name: c.name,
@@ -554,10 +595,34 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
                 placeholder="10-digit mobile number for WhatsApp PDF bill"
                 keyboardType="phone-pad"
                 value={customerPhone}
-                onChangeText={setCustomerPhone}
+                onChangeText={handlePhoneChange}
                 maxLength={15}
               />
             </View>
+
+            {/* Visit Count & Customer Profile Badge */}
+            {activeCustomer ? (
+              <View className="bg-amber-50 border border-amber-300 rounded-xl p-3 my-2">
+                <View className="flex-row items-center justify-between">
+                  <View className="flex-row items-center">
+                    <Ionicons name="person-circle" size={24} color="#D97706" />
+                    <View className="ml-2">
+                      <Text className="text-sm font-extrabold text-amber-950">
+                        {activeCustomer.name}
+                      </Text>
+                      <Text className="text-[11px] font-bold text-amber-800">
+                        Total Visits: <Text className="font-extrabold text-amber-900 text-xs">{activeCustomer.visitCount || 1}</Text> • Total Spent: Rs. {activeCustomer.totalSpent || 0}
+                      </Text>
+                    </View>
+                  </View>
+                  {activeCustomer.isRegular ? (
+                    <View className="bg-amber-200 px-2 py-0.5 rounded-full">
+                      <Text className="text-[10px] font-extrabold text-amber-900">VIP / Regular</Text>
+                    </View>
+                  ) : null}
+                </View>
+              </View>
+            ) : null}
 
             {customerPhone.trim().length >= 10 ? (
               <View className="bg-emerald-50 border border-emerald-200 rounded-lg p-2 flex-row items-center mt-1">
@@ -568,29 +633,47 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
               </View>
             ) : null}
 
-            {selectedParty?.isRegular &&
-            (selectedParty.customDiscountPercent > 0 || selectedParty.assignedFreebie) ? (
-              <View className="bg-blue-50 border border-blue-200 rounded-lg p-2.5 mt-2">
-                <View className="flex-row items-center justify-between mb-1">
-                  <Text className="text-blue-900 text-xs font-extrabold">
-                    Regular Customer Perks Active
+            {/* Discount & Free Foods Section */}
+            <View className="mt-3 pt-3 border-t border-gray-200">
+              <Text className="text-xs font-bold text-gray-700 mb-2">
+                Custom Discount & Free Foods
+              </Text>
+              <View className="flex-row gap-2 mb-2">
+                <View className="flex-1">
+                  <Text className="text-[11px] font-semibold text-gray-600 mb-1">
+                    Discount (%):
                   </Text>
-                  <View className="bg-amber-100 px-1.5 py-0.5 rounded">
-                    <Text className="text-amber-800 text-[10px] font-bold">Regular</Text>
-                  </View>
+                  <TextInput
+                    className="bg-gray-100 border border-gray-300 rounded-xl px-3 py-2 text-sm font-bold text-emerald-800"
+                    placeholder="e.g. 10"
+                    keyboardType="numeric"
+                    value={customDiscount}
+                    onChangeText={setCustomDiscount}
+                  />
                 </View>
-                {selectedParty.customDiscountPercent > 0 ? (
-                  <Text className="text-blue-900 text-xs font-bold">
-                    Discount: {selectedParty.customDiscountPercent}% auto-applied
+                <View className="flex-1">
+                  <Text className="text-[11px] font-semibold text-gray-600 mb-1">
+                    Free Food / Gift:
                   </Text>
-                ) : null}
-                {selectedParty.assignedFreebie ? (
-                  <Text className="text-blue-800 text-xs mt-0.5">
-                    Free Gift: {selectedParty.assignedFreebie}
-                  </Text>
-                ) : null}
+                  <TextInput
+                    className="bg-gray-100 border border-gray-300 rounded-xl px-3 py-2 text-sm font-bold text-blue-900"
+                    placeholder="e.g. Cold Drink / Dessert"
+                    value={customFreebie}
+                    onChangeText={setCustomFreebie}
+                  />
+                </View>
               </View>
-            ) : null}
+              {appliedDiscountPercent > 0 ? (
+                <Text className="text-[11px] font-bold text-emerald-700">
+                  🎉 {appliedDiscountPercent}% Discount Applied (-Rs. {regularDiscountAmount})
+                </Text>
+              ) : null}
+              {customFreebie ? (
+                <Text className="text-[11px] font-bold text-blue-700 mt-0.5">
+                  🎁 Complimentary: {customFreebie}
+                </Text>
+              ) : null}
+            </View>
           </View>
 
           {/* Billed Items Summary Card */}
@@ -718,7 +801,7 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
             {regularDiscountAmount > 0 ? (
               <View className="flex-row justify-between mb-2">
                 <Text className="text-xs text-emerald-700 font-bold">
-                  Regular Discount ({regularDiscountRate}%)
+                  Discount ({appliedDiscountPercent}%)
                 </Text>
                 <Text className="text-xs font-bold text-emerald-700">
                   -Rs. {regularDiscountAmount}
@@ -726,11 +809,11 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
               </View>
             ) : null}
 
-            {selectedParty?.assignedFreebie ? (
+            {customFreebie || activeCustomer?.assignedFreebie ? (
               <View className="flex-row justify-between mb-2">
-                <Text className="text-xs text-blue-700 font-bold">Free Gift Item</Text>
+                <Text className="text-xs text-blue-700 font-bold">Free Food / Gift</Text>
                 <Text className="text-xs font-bold text-blue-700">
-                  {selectedParty.assignedFreebie}
+                  {customFreebie || activeCustomer?.assignedFreebie}
                 </Text>
               </View>
             ) : null}

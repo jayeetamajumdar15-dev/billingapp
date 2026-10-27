@@ -329,6 +329,8 @@ router.post("/", async (req, res) => {
       upiAmount,
       applyRegularDiscount = true,
       additionalDiscountPercent = 0,
+      customDiscountPercent = 0,
+      customFreebieItem = "",
       notes,
     } = req.body;
 
@@ -338,8 +340,8 @@ router.post("/", async (req, res) => {
 
     let customer = null;
     let isRegularCustomer = false;
-    let regularDiscountPercent = 0;
-    let freebieItem = "";
+    let regularDiscountPercent = Number(customDiscountPercent) || 0;
+    let freebieItem = (customFreebieItem || "").trim();
 
     // Normalize phone number inputs
     const typedDigits = (partyPhone || "").toString().replace(/[^0-9]/g, "").replace(/^0+/, "");
@@ -379,9 +381,11 @@ router.post("/", async (req, res) => {
     }
 
     if (customer) {
-      isRegularCustomer = customer.isRegular;
-      if (isRegularCustomer && applyRegularDiscount) {
+      isRegularCustomer = customer.isRegular || (customer.visitCount >= 3);
+      if (!regularDiscountPercent && isRegularCustomer && applyRegularDiscount) {
         regularDiscountPercent = customer.customDiscountPercent || 0;
+      }
+      if (!freebieItem && isRegularCustomer && applyRegularDiscount) {
         freebieItem = customer.assignedFreebie || "";
       }
     }
