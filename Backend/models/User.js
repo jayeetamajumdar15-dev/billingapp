@@ -53,6 +53,14 @@ const userSchema = new mongoose.Schema(
       enum: ["2inch", "3inch", "A4", "A5"],
       default: "3inch",
     },
+    whatsappLinked: {
+      type: Boolean,
+      default: false,
+    },
+    whatsappLinkedNumber: {
+      type: String,
+      trim: true,
+    },
   },
   { timestamps: true }
 );

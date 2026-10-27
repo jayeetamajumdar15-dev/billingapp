@@ -94,26 +94,23 @@ export async function shareBackendPdf(invoice, fileName = null) {
 function formatReceiptDate(dateStr) {
   try {
     const d = dateStr ? new Date(dateStr) : new Date();
-    return d.toLocaleString("en-IN", {
+    return new Intl.DateTimeFormat("en-GB", {
       timeZone: "Asia/Kolkata",
       day: "2-digit",
       month: "2-digit",
-      year: "2-digit",
+      year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
-      hour12: true,
-    });
+      hour12: false,
+    }).format(d).replace(",", "");
   } catch {
     const d = dateStr ? new Date(dateStr) : new Date();
     const day = String(d.getDate()).padStart(2, "0");
     const month = String(d.getMonth() + 1).padStart(2, "0");
-    const year = String(d.getFullYear()).slice(-2);
-    let hours = d.getHours();
+    const year = String(d.getFullYear());
+    const hours = String(d.getHours()).padStart(2, "0");
     const minutes = String(d.getMinutes()).padStart(2, "0");
-    const ampm = hours >= 12 ? "PM" : "AM";
-    hours = hours % 12;
-    if (hours === 0) hours = 12;
-    return `${day}/${month}/${year} ${hours}:${minutes} ${ampm}`;
+    return `${day}/${month}/${year} ${hours}:${minutes}`;
   }
 }
 

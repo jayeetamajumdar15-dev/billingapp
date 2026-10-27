@@ -159,7 +159,7 @@ export function generateInvoicePdfBuffer(invoice, storeInfo = {}) {
       doc.y = tokenBoxY + 38;
 
       // ─── 5. BILL METADATA CARD (Petpooja Date & Customer Info) ────────────
-      const rawDate = invoice.createdAt || invoice.invoiceDate || new Date();
+      const rawDate = invoice.invoiceDate || invoice.createdAt || new Date();
       const petpoojaDateStr = new Intl.DateTimeFormat("en-GB", {
         timeZone: "Asia/Kolkata",
         day: "2-digit",
@@ -341,17 +341,6 @@ export function generateInvoicePdfBuffer(invoice, storeInfo = {}) {
 
       doc.fontSize(8).font("Helvetica-Bold").fillColor("#0F172A")
         .text("Thank you for your visit! Have a wonderful day.", leftX, doc.y, { width: contentWidth, align: "center" });
-
-      doc.fontSize(6.5).font("Helvetica").fillColor("#64748B")
-        .text("Official Computer-Generated Tax Invoice", leftX, doc.y + 1, { width: contentWidth, align: "center" });
-
-      if (storePhone) {
-        doc.fontSize(6.5).font("Helvetica").fillColor("#64748B")
-          .text(`Contact / Feedback: +${storePhone}`, leftX, doc.y + 1, {
-            width: contentWidth,
-            align: "center",
-          });
-      }
 
       doc.end();
     } catch (err) {

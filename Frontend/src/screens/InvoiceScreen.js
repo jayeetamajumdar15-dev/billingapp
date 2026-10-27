@@ -872,6 +872,17 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
               <Text className="text-xs font-bold text-blue-600 mt-1">
                 #{createdInvoice?.invoiceNumber}
               </Text>
+              <Text className="text-[11px] text-gray-500 mt-0.5">
+                Date: {new Intl.DateTimeFormat("en-GB", {
+                  timeZone: "Asia/Kolkata",
+                  day: "2-digit",
+                  month: "2-digit",
+                  year: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  hour12: false,
+                }).format(new Date(createdInvoice?.invoiceDate || createdInvoice?.createdAt || new Date())).replace(",", "")}
+              </Text>
               <Text className="text-[11px] text-gray-500">
                 Customer: {createdInvoice?.partyName}
               </Text>

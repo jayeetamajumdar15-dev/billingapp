@@ -477,10 +477,14 @@ router.post("/", async (req, res) => {
     }
     const destinationPhone = normalizeWhatsAppNumber(rawDestination);
 
+    // Ensure exact current time is recorded for this bill
+    const currentTimestamp = new Date();
+
     // 1. Create Invoice Record First to obtain invoice._id
     const invoice = await Invoice.create({
       userId: req.user._id,
       invoiceNumber,
+      invoiceDate: currentTimestamp,
       partyId: customer ? customer._id : undefined,
       partyName: customer ? customer.name : partyName || "Cash Customer",
       partyPhone: destinationPhone,
@@ -542,7 +546,7 @@ router.post("/", async (req, res) => {
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
-    }).format(new Date(invoice.createdAt || invoice.invoiceDate || new Date())).replace(",", "");
+    }).format(new Date(invoice.invoiceDate || invoice.createdAt || currentTimestamp)).replace(",", "");
 
     const storeTitle = business.businessName || "THE A POP JAKO BITES";
     const amountVal = Number(grandTotal || 0).toFixed(0);

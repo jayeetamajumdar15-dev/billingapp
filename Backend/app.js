@@ -45,7 +45,7 @@ app.use(cookieParser());
 app.get("/", (req, res) => {
   res.status(200).json({
     status: "online",
-    service: "Ezo Billing System API",
+    service: "Billing System API",
     version: "1.0.0",
     timestamp: new Date().toISOString(),
   });
@@ -116,7 +116,7 @@ app.use((err, req, res, next) => {
 
 if (process.env.NODE_ENV !== "test") {
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Ezo Billing API server running on port ${PORT} (0.0.0.0)`);
+    console.log(`Billing API server running on port ${PORT} (0.0.0.0)`);
   });
 }
 
