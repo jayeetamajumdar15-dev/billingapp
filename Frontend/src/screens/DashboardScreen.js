@@ -8,6 +8,8 @@ import {
   ActivityIndicator,
   RefreshControl,
   Image,
+  Modal,
+  Alert,
 } from "react-native";
 import {
   Ionicons,
@@ -15,7 +17,8 @@ import {
   FontAwesome5,
 } from "@expo/vector-icons";
 import { api } from "../config/api";
-import { shareBackendPdf } from "../utils/receiptPdfGenerator";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { shareBackendPdf, printTestSlip } from "../utils/receiptPdfGenerator";
 
 export default function DashboardScreen({
   user,
@@ -27,6 +30,9 @@ export default function DashboardScreen({
   const [recentTransactions, setRecentTransactions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [showBtGuide, setShowBtGuide] = useState(false);
+  const [testingPrinter, setTestingPrinter] = useState(false);
+  const [printerPaperSize, setPrinterPaperSize] = useState("3inch");
 
   const fetchDashboardData = async () => {
     setLoading(true);
@@ -42,11 +48,37 @@ export default function DashboardScreen({
 
   useEffect(() => {
     fetchDashboardData();
+    AsyncStorage.getItem("billFormatOptions").then((res) => {
+      if (res) {
+        try {
+          const parsed = JSON.parse(res);
+          if (parsed.paperWidth) setPrinterPaperSize(parsed.paperWidth);
+        } catch {}
+      }
+    });
   }, []);
 
   const onRefresh = () => {
     setRefreshing(true);
     fetchDashboardData();
+  };
+
+  const handleTestSlip = async () => {
+    setTestingPrinter(true);
+    try {
+      const storeData = {
+        businessName: user?.businessName || "My Store",
+        phone: user?.phone || "7003317615",
+        address: user?.address || "",
+        email: user?.email || "",
+        gstin: user?.gstin || "",
+      };
+      await printTestSlip(storeData, { paperWidth: printerPaperSize }, "both");
+    } catch (e) {
+      Alert.alert("Printer Notice", e.message || "Could not launch print service");
+    } finally {
+      setTestingPrinter(false);
+    }
   };
 
   return (
@@ -68,9 +100,19 @@ export default function DashboardScreen({
           </Text>
         </View>
 
-        <TouchableOpacity onPress={onRefresh} className="p-1">
-          <Ionicons name="sync" size={22} color="#FFFFFF" />
-        </TouchableOpacity>
+        <View className="flex-row items-center gap-1">
+          {/* Quick Bluetooth Connect Button in Top Bar */}
+          <TouchableOpacity
+            onPress={() => setShowBtGuide(true)}
+            className="bg-blue-700 p-1.5 rounded-full mr-1 items-center justify-center border border-blue-400"
+          >
+            <Ionicons name="bluetooth" size={19} color="#FFFFFF" />
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={onRefresh} className="p-1">
+            <Ionicons name="sync" size={22} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -80,6 +122,53 @@ export default function DashboardScreen({
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
+        {/* ─── BLUETOOTH THERMAL PRINTER QUICK-CONNECT CARD ─── */}
+        <View className="bg-white rounded-2xl p-3.5 mb-3.5 border border-blue-300 shadow-xs flex-row items-center justify-between">
+          <View className="flex-row items-center flex-1 mr-2">
+            <View className="w-10 h-10 rounded-xl bg-blue-600 items-center justify-center mr-3 shadow-xs">
+              <Ionicons name="bluetooth" size={22} color="#FFFFFF" />
+            </View>
+            <View className="flex-1">
+              <View className="flex-row items-center">
+                <Text className="text-xs font-black text-gray-900 uppercase tracking-wider">
+                  Thermal Printer
+                </Text>
+                <View className="ml-2 bg-emerald-100 px-1.5 py-0.2 rounded-full flex-row items-center">
+                  <View className="w-1.5 h-1.5 rounded-full bg-emerald-600 mr-1" />
+                  <Text className="text-[9px] font-bold text-emerald-800">Ready</Text>
+                </View>
+              </View>
+              <Text className="text-[11px] text-gray-500 font-medium mt-0.5">
+                58mm / 80mm Bluetooth printer connection
+              </Text>
+            </View>
+          </View>
+
+          <View className="flex-row items-center gap-1.5">
+            <TouchableOpacity
+              onPress={handleTestSlip}
+              disabled={testingPrinter}
+              className="bg-blue-50 border border-blue-200 px-2.5 py-1.5 rounded-xl flex-row items-center active:bg-blue-100"
+            >
+              {testingPrinter ? (
+                <ActivityIndicator size="small" color="#2563EB" />
+              ) : (
+                <>
+                  <Ionicons name="print-outline" size={13} color="#2563EB" />
+                  <Text className="text-blue-700 text-[11px] font-bold ml-1">Test Print</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setShowBtGuide(true)}
+              className="bg-blue-600 px-3 py-1.5 rounded-xl flex-row items-center shadow-xs"
+            >
+              <Ionicons name="bluetooth-outline" size={13} color="#FFFFFF" />
+              <Text className="text-white text-[11px] font-bold ml-1">Connect</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
         {/* Reports Banner matching Screen-1 */}
         <TouchableOpacity
           onPress={() => (onNavigateTab ? onNavigateTab("reports") : onRefresh())}
@@ -240,6 +329,77 @@ export default function DashboardScreen({
           </Text>
         </TouchableOpacity>
       </View>
+
+      {/* Bluetooth Connection Guide Modal */}
+      <Modal visible={showBtGuide} animationType="slide" transparent={true}>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" }}>
+          <View style={{ backgroundColor: "#FFFFFF", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20 }}>
+            <View className="flex-row items-center justify-between mb-3">
+              <View className="flex-row items-center">
+                <View className="w-8 h-8 rounded-full bg-blue-100 items-center justify-center mr-2">
+                  <Ionicons name="bluetooth" size={18} color="#2563EB" />
+                </View>
+                <Text className="text-base font-extrabold text-gray-900">
+                  Connect Bluetooth Printer
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowBtGuide(false)}>
+                <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            <View className="bg-blue-50 border border-blue-200 rounded-xl p-3.5 mb-4">
+              <Text className="text-xs font-bold text-blue-900 mb-1">
+                Easy 3-Step Pairing Steps:
+              </Text>
+              <Text className="text-xs text-blue-800 leading-5">
+                1. <Text className="font-bold">Turn ON</Text> your Bluetooth thermal printer (Blue LED on).{"\n"}
+                2. Open your <Text className="font-bold">Phone Settings ➔ Bluetooth</Text>, scan and tap your printer to pair (PIN is usually <Text className="font-bold">0000</Text> or <Text className="font-bold">1234</Text>).{"\n"}
+                3. Tap <Text className="font-bold">Test Print Slip</Text> below. Select your paired printer from the print dialog.
+              </Text>
+            </View>
+
+            <View className="flex-row gap-2">
+              <TouchableOpacity
+                onPress={handleTestSlip}
+                disabled={testingPrinter}
+                className="flex-1 bg-blue-600 py-3 rounded-xl items-center flex-row justify-center shadow-sm"
+              >
+                {testingPrinter ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Ionicons name="print" size={16} color="#FFFFFF" />
+                    <Text className="text-white text-xs font-bold ml-1.5">
+                      Send Test Print Slip
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => {
+                  setShowBtGuide(false);
+                  if (onNavigateTab) onNavigateTab("settings");
+                }}
+                className="flex-1 bg-gray-100 py-3 rounded-xl items-center flex-row justify-center border border-gray-200"
+              >
+                <Ionicons name="settings-outline" size={16} color="#374151" />
+                <Text className="text-gray-800 text-xs font-bold ml-1.5">
+                  Printer Settings
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              onPress={() => setShowBtGuide(false)}
+              className="mt-3 py-2 items-center"
+            >
+              <Text className="text-gray-500 font-bold text-xs">Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

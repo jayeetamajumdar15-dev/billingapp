@@ -735,6 +735,52 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
             </View>
           </View>
 
+          {/* Print Target Option while Creating Invoice */}
+          <View className="bg-white rounded-xl p-3.5 mb-4 border border-blue-200 shadow-sm">
+            <View className="flex-row items-center justify-between mb-2">
+              <View className="flex-row items-center">
+                <Ionicons name="print-outline" size={16} color="#2563EB" />
+                <Text className="text-xs font-bold text-gray-800 uppercase tracking-wider ml-1.5">
+                  Print Target
+                </Text>
+              </View>
+              <Text className="text-[10px] text-blue-600 font-semibold">
+                Auto-reflects on Thermal Printer
+              </Text>
+            </View>
+
+            <View className="flex-row bg-gray-100 p-1 rounded-xl border border-gray-200">
+              {[
+                { key: "both", label: "Both (Bill + KOT)", icon: "copy-outline" },
+                { key: "customer", label: "Customer Only", icon: "receipt-outline" },
+                { key: "cooker", label: "Cooker KOT", icon: "restaurant-outline" },
+              ].map((t) => (
+                <TouchableOpacity
+                  key={t.key}
+                  onPress={() => setPrintTarget(t.key)}
+                  className={`flex-1 py-2 rounded-lg flex-row items-center justify-center ${
+                    printTarget === t.key
+                      ? "bg-white shadow-xs border border-blue-300"
+                      : "bg-transparent"
+                  }`}
+                >
+                  <Ionicons
+                    name={t.icon}
+                    size={13}
+                    color={printTarget === t.key ? "#2563EB" : "#6B7280"}
+                  />
+                  <Text
+                    className={`text-[11px] font-bold ml-1 ${
+                      printTarget === t.key ? "text-blue-700" : "text-gray-600"
+                    }`}
+                  >
+                    {t.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
           {/* Finalize Button */}
           <TouchableOpacity
             onPress={handleGenerateInvoice}

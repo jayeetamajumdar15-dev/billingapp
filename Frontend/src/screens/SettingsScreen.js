@@ -25,86 +25,7 @@ import {
 } from "../services/updateService";
 import { printTestSlip } from "../utils/receiptPdfGenerator";
 
-export const FOOD_CATEGORIES = [
-  {
-    id: "burgers",
-    name: "Fast Food & Burgers",
-    icon: "🍔",
-    tagline: "Crispy patties, loaded fries & quick bites",
-    badgeColor: "#EF4444",
-    items: [
-      { name: "Crispy Chicken Supreme Burger", price: 149, unit: "PCS", isVeg: false, desc: "Crispy chicken breast, melted cheddar cheese, spicy mayo" },
-      { name: "Veggie Delight Crunch Burger", price: 99, unit: "PCS", isVeg: true, desc: "Spiced potato-pea patty, fresh tomato slices, eggless mayo" },
-      { name: "Peri Peri Loaded Cheesy Fries", price: 89, unit: "PLATE", isVeg: true, desc: "Crispy fries tossed in African peri peri & liquid cheese" },
-      { name: "Golden Crispy Chicken Wings (4pcs)", price: 179, unit: "PLATE", isVeg: false, desc: "Juicy golden wings served with garlic dipping mayo" },
-    ],
-  },
-  {
-    id: "pizzas",
-    name: "Pizzas & Breads",
-    icon: "🍕",
-    tagline: "Stone-baked crusts & molten mozzarella",
-    badgeColor: "#F97316",
-    items: [
-      { name: "Classic Double Cheese Margherita", price: 199, unit: "PCS", isVeg: true, desc: "100% Mozzarella cheese with aromatic herb tomato base" },
-      { name: "Farmhouse Garden Fresh Pizza", price: 259, unit: "PCS", isVeg: true, desc: "Bell peppers, red onions, mushrooms & sweet corn" },
-      { name: "Tandoori Paneer Tikka Pizza", price: 249, unit: "PCS", isVeg: true, desc: "Smoky tandoori paneer, red paprika & spiced makhani drizzle" },
-      { name: "Cheesy Stuffed Garlic Breadsticks", price: 109, unit: "PLATE", isVeg: true, desc: "Oven fresh breadsticks filled with molten cheese & herbs" },
-    ],
-  },
-  {
-    id: "biryani",
-    name: "Biryani & Meals",
-    icon: "🍚",
-    tagline: "Slow-dum cooked aromatic rice & curries",
-    badgeColor: "#D97706",
-    items: [
-      { name: "Hyderabadi Chicken Dum Biryani", price: 249, unit: "PORTION", isVeg: false, desc: "Aged long-grain basmati rice with succulent chicken & raita" },
-      { name: "Shahi Paneer Dum Biryani", price: 199, unit: "PORTION", isVeg: true, desc: "Saffron infused dum rice layered with marinated paneer" },
-      { name: "Butter Chicken & Rice Bowl", price: 219, unit: "BOWL", isVeg: false, desc: "Boneless chicken in velvet tomato gravy over steamed jeera rice" },
-      { name: "Dal Makhani & Jeera Rice Bowl", price: 169, unit: "BOWL", isVeg: true, desc: "24-hr simmered black lentils cooked in fresh cream & butter" },
-    ],
-  },
-  {
-    id: "chinese",
-    name: "Momos & Starters",
-    icon: "🥟",
-    tagline: "Steamed & fried momos, wok-tossed starters",
-    badgeColor: "#16A34A",
-    items: [
-      { name: "Steamed Chicken Momos (6pcs)", price: 119, unit: "PLATE", isVeg: false, desc: "Tender dumplings filled with minced chicken & scallions" },
-      { name: "Crispy Fried Peri Peri Veg Momos", price: 99, unit: "PLATE", isVeg: true, desc: "Crunchy dumplings dusted with zesty spices & mint mayo" },
-      { name: "Chilli Paneer Dry / Gravy", price: 189, unit: "PLATE", isVeg: true, desc: "Wok-fried paneer cubes with green chilies, onions & dark soy" },
-      { name: "Vegetable Hakka Noodles", price: 149, unit: "PLATE", isVeg: true, desc: "Stir-fried ribbon noodles with shredded cabbage & peppers" },
-    ],
-  },
-  {
-    id: "beverages",
-    name: "Beverages & Drinks",
-    icon: "🥤",
-    tagline: "Cold brewed shakes, smoothies & refresher teas",
-    badgeColor: "#0284C7",
-    items: [
-      { name: "Cold Coffee with Vanilla Ice Cream", price: 99, unit: "GLASS", isVeg: true, desc: "Thick espresso shake topped with rich vanilla ice cream" },
-      { name: "Fresh Virgin Mint Lime Mojito", price: 89, unit: "GLASS", isVeg: true, desc: "Muddled fresh mint sprigs, lime juice & sparkling soda" },
-      { name: "Alphonso Mango Cream Smoothie", price: 119, unit: "GLASS", isVeg: true, desc: "Rich ratnagiri mango pulp blended with Greek yogurt" },
-      { name: "Special Masala Kadak Chai", price: 39, unit: "CUP", isVeg: true, desc: "Hand-pounded ginger, cardamom & clove slow brewed tea" },
-    ],
-  },
-  {
-    id: "desserts",
-    name: "Desserts & Bakery",
-    icon: "🍰",
-    tagline: "Molten cakes, pastries & sweet indulgences",
-    badgeColor: "#DB2777",
-    items: [
-      { name: "Warm Choco Lava Cake", price: 89, unit: "PCS", isVeg: true, desc: "Baked chocolate crust filled with hot flowing Belgian chocolate" },
-      { name: "Red Velvet Cream Cheese Pastry", price: 99, unit: "PCS", isVeg: true, desc: "Velvety sponge layered with imported Philadelphia cream cheese" },
-      { name: "Hot Gulab Jamun with Rabri (2pcs)", price: 79, unit: "PORTION", isVeg: true, desc: "Melt-in-mouth milk dumplings served with saffron rabri" },
-      { name: "Fudge Walnut Brownie", price: 109, unit: "PCS", isVeg: true, desc: "Chewy dark chocolate brownie studded with roasted walnuts" },
-    ],
-  },
-];
+
 
 export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, onProfileUpdated }) {
   const [businessName, setBusinessName] = useState(user?.businessName || "");
@@ -140,10 +61,6 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
   const [testingPrinter, setTestingPrinter] = useState(false);
   const [printTarget, setPrintTarget] = useState("both"); // "both" | "customer" | "kot"
 
-  // Food Categories Showcase & Preview state
-  const [selectedFoodCategory, setSelectedFoodCategory] = useState("Fast Food & Burgers");
-  const [importingMenu, setImportingMenu] = useState(false);
-
   const handleTestPrint = async () => {
     setTestingPrinter(true);
     try {
@@ -171,42 +88,6 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
     } finally {
       setTestingPrinter(false);
     }
-  };
-
-  const handleImportCategoryItems = async (categoryObj) => {
-    Alert.alert(
-      "Import Category Items",
-      `Add all 4 food items from "${categoryObj.name}" into your store inventory?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Import Now",
-          onPress: async () => {
-            setImportingMenu(true);
-            try {
-              let added = 0;
-              for (const it of categoryObj.items) {
-                await api.items.create({
-                  name: it.name,
-                  category: categoryObj.name,
-                  sellingPrice: it.price,
-                  costPrice: Math.round(it.price * 0.55),
-                  stock: 50,
-                  unit: it.unit || "PCS",
-                  taxRate: 5,
-                });
-                added++;
-              }
-              Alert.alert("Imported", `Successfully added ${added} items from ${categoryObj.name} to your store!`);
-            } catch (err) {
-              Alert.alert("Import Status", err.message || "Could not import items");
-            } finally {
-              setImportingMenu(false);
-            }
-          },
-        },
-      ]
-    );
   };
 
   const fetchWaStatus = async () => {
@@ -729,122 +610,6 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
           </View>
         </View>
 
-        {/* ─── FOOD CATEGORIES & SHOWCASE CATALOG PREVIEW (6 TYPES) ─── */}
-        <View className="bg-white rounded-xl p-4 mb-4 border border-gray-200 shadow-sm">
-          <View className="flex-row items-center justify-between mb-2">
-            <View className="flex-row items-center">
-              <Text className="text-xl mr-2">🍽️</Text>
-              <View>
-                <Text className="text-xs font-bold text-gray-800 uppercase tracking-wider">
-                  Food Categories & Showcase Catalog
-                </Text>
-                <Text className="text-[10.5px] text-gray-500 font-semibold">
-                  6 Curated Food Categories · 24 Chef Recommended Items
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Category Tabs Pill Carousel */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="py-2 mb-2">
-            {FOOD_CATEGORIES.map((cat) => {
-              const isSelected = selectedFoodCategory === cat.name;
-              return (
-                <TouchableOpacity
-                  key={cat.id}
-                  onPress={() => setSelectedFoodCategory(cat.name)}
-                  className={`flex-row items-center px-3 py-2 rounded-xl mr-2 border ${
-                    isSelected
-                      ? "bg-blue-600 border-blue-600 shadow-xs"
-                      : "bg-gray-100 border-gray-200"
-                  }`}
-                >
-                  <Text className="text-base mr-1.5">{cat.icon}</Text>
-                  <Text
-                    className={`text-xs font-bold ${
-                      isSelected ? "text-white" : "text-gray-700"
-                    }`}
-                  >
-                    {cat.name}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-
-          {/* Active Category Header & Items Preview */}
-          {(() => {
-            const activeCat = FOOD_CATEGORIES.find((c) => c.name === selectedFoodCategory) || FOOD_CATEGORIES[0];
-            return (
-              <View>
-                <View className="flex-row items-center justify-between bg-blue-50 border border-blue-100 p-2.5 rounded-xl mb-3">
-                  <View className="flex-1 pr-2">
-                    <Text className="text-xs font-extrabold text-blue-900">
-                      {activeCat.icon} {activeCat.name}
-                    </Text>
-                    <Text className="text-[11px] text-blue-700 font-medium mt-0.5">
-                      {activeCat.tagline}
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    onPress={() => handleImportCategoryItems(activeCat)}
-                    disabled={importingMenu}
-                    className="bg-blue-600 px-3 py-1.5 rounded-lg flex-row items-center shadow-xs"
-                  >
-                    {importingMenu ? (
-                      <ActivityIndicator size="small" color="#FFFFFF" />
-                    ) : (
-                      <>
-                        <Ionicons name="cloud-download-outline" size={13} color="#FFFFFF" />
-                        <Text className="text-white text-[11px] font-bold ml-1">Import to Store</Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
-                </View>
-
-                {/* 4 Preview Items in Selected Category */}
-                <View className="space-y-2">
-                  {activeCat.items.map((item, idx) => (
-                    <View
-                      key={idx}
-                      className="p-3 mb-2 rounded-xl border border-gray-200 bg-gray-50/70 flex-row items-center justify-between"
-                    >
-                      <View className="flex-1 pr-3">
-                        <View className="flex-row items-center mb-0.5">
-                          <View
-                            className={`w-3 h-3 rounded-xs border items-center justify-center mr-1.5 ${
-                              item.isVeg ? "border-emerald-600" : "border-red-600"
-                            }`}
-                          >
-                            <View
-                              className={`w-1.5 h-1.5 rounded-full ${
-                                item.isVeg ? "bg-emerald-600" : "bg-red-600"
-                              }`}
-                            />
-                          </View>
-                          <Text className="text-xs font-bold text-gray-900 flex-1" numberOfLines={1}>
-                            {item.name}
-                          </Text>
-                        </View>
-                        <Text className="text-[11px] text-gray-500 leading-3.5" numberOfLines={2}>
-                          {item.desc}
-                        </Text>
-                      </View>
-                      <View className="items-end bg-white px-2.5 py-1 rounded-lg border border-gray-200 shadow-xs">
-                        <Text className="text-xs font-black text-blue-700">
-                          Rs. {item.price}
-                        </Text>
-                        <Text className="text-[9px] font-semibold text-gray-400">
-                          /{item.unit}
-                        </Text>
-                      </View>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            );
-          })()}
-        </View>
 
         {/* Preview Modal */}
         <Modal visible={showPreview} animationType="slide" transparent={true}>
