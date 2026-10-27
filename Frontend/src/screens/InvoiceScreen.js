@@ -40,6 +40,8 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
   const [sendingWa, setSendingWa] = useState(false);
   const [billFormatOptions, setBillFormatOptions] = useState({});
   const [sharingPdf, setSharingPdf] = useState(false);
+  const [kotSent, setKotSent] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState("All");
 
 
   useEffect(() => {
@@ -214,7 +216,18 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
       setWhatsappUrl(res.whatsappUrl || "");
       setWhatsappSent(Boolean(res.whatsappSent));
       setShowReceiptModal(true);
+      setKotSent(false);
       if (onInvoiceSaved) onInvoiceSaved();
+
+      // ─── AUTO-GENERATE KOT FOR COOKERS ─────────────────────────────
+      try {
+        const kotStoreInfo = { businessName: user?.businessName || "Kitchen" };
+        await printBill(res.invoice, kotStoreInfo, billFormatOptions, "cooker");
+        setKotSent(true);
+      } catch (kotErr) {
+        console.warn("Auto KOT print failed:", kotErr.message);
+        // KOT can still be printed manually from the receipt modal
+      }
     } else {
       Alert.alert("Billing Failed", res.message || "Could not generate invoice");
     }
@@ -609,10 +622,43 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
               ) : null}
             </View>
 
+            {/* Category Filter Chips */}
+            {(() => {
+              const cats = ["All", ...new Set(items.map((i) => i.category || "Other").filter(Boolean))];
+              return cats.length > 2 ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8, maxHeight: 36 }}>
+                  {cats.map((cat) => (
+                    <TouchableOpacity
+                      key={cat}
+                      onPress={() => setSelectedCategory(cat)}
+                      style={{
+                        paddingHorizontal: 12,
+                        paddingVertical: 6,
+                        borderRadius: 16,
+                        marginRight: 6,
+                        backgroundColor: selectedCategory === cat ? "#2563EB" : "#F3F4F6",
+                        borderWidth: 1,
+                        borderColor: selectedCategory === cat ? "#2563EB" : "#D1D5DB",
+                      }}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: "700", color: selectedCategory === cat ? "#FFFFFF" : "#374151" }}>
+                        {cat}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              ) : null;
+            })()}
+
             <FlatList
-              data={items.filter((i) =>
-                i.name.toLowerCase().includes(itemSearch.toLowerCase())
-              )}
+              data={items.filter((i) => {
+                const matchSearch = itemSearch
+                  ? i.name.toLowerCase().includes(itemSearch.toLowerCase()) ||
+                    (i.barcode || "").toLowerCase().includes(itemSearch.toLowerCase())
+                  : true;
+                const matchCategory = selectedCategory === "All" || (i.category || "Other") === selectedCategory;
+                return matchSearch && matchCategory;
+              })}
               keyExtractor={(i) => i._id}
               renderItem={({ item }) => {
                 const qtyInCart = getCartItemQty(item._id);
@@ -855,6 +901,16 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
                   Open WhatsApp with Bill & PDF Link
                 </Text>
               </TouchableOpacity>
+            ) : null}
+
+            {/* KOT Status */}
+            {kotSent ? (
+              <View className="w-full bg-amber-50 border border-amber-300 rounded-xl p-2.5 mb-2.5 flex-row items-center justify-center">
+                <Ionicons name="restaurant" size={17} color="#B45309" />
+                <Text className="text-amber-800 font-bold text-xs ml-1.5">
+                  ✅ KOT Sent to Kitchen / Cooker Automatically!
+                </Text>
+              </View>
             ) : null}
 
             {/* Print All (2 Customer + 1 Cooker) */}
