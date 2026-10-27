@@ -226,13 +226,21 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
       setKotSent(false);
       if (onInvoiceSaved) onInvoiceSaved();
 
-      // AUTO-GENERATE KOT FOR COOKERS
-      try {
-        const kotStoreInfo = { businessName: user?.businessName || "Kitchen" };
-        await printBill(res.invoice, kotStoreInfo, billFormatOptions, "cooker");
-        setKotSent(true);
-      } catch (kotErr) {
-        console.warn("Auto KOT print failed:", kotErr.message);
+      // Automatic printing only if printTarget is not 'none'
+      if (printTarget !== "none") {
+        try {
+          const storeData = {
+            businessName: user?.businessName || "My Store",
+            phone: user?.phone || "7003317615",
+            address: user?.address || "",
+            email: user?.email || "",
+            gstin: user?.gstin || "",
+          };
+          await printBill(res.invoice, storeData, billFormatOptions, printTarget);
+          setKotSent(true);
+        } catch (printErr) {
+          console.warn("Thermal print notice (printer offline or skipped):", printErr.message);
+        }
       }
     } else {
       Alert.alert("Billing Failed", res.message || "Could not generate invoice");
@@ -751,14 +759,15 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
 
             <View className="flex-row bg-gray-100 p-1 rounded-xl border border-gray-200">
               {[
-                { key: "both", label: "Both (Bill + KOT)", icon: "copy-outline" },
-                { key: "customer", label: "Customer Only", icon: "receipt-outline" },
+                { key: "both", label: "Both (Bill+KOT)", icon: "copy-outline" },
+                { key: "customer", label: "Customer", icon: "receipt-outline" },
                 { key: "cooker", label: "Cooker KOT", icon: "restaurant-outline" },
+                { key: "none", label: "No Print", icon: "close-circle-outline" },
               ].map((t) => (
                 <TouchableOpacity
                   key={t.key}
                   onPress={() => setPrintTarget(t.key)}
-                  className={`flex-1 py-2 rounded-lg flex-row items-center justify-center ${
+                  className={`flex-1 py-1.5 rounded-lg flex-row items-center justify-center ${
                     printTarget === t.key
                       ? "bg-white shadow-xs border border-blue-300"
                       : "bg-transparent"
@@ -766,11 +775,11 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
                 >
                   <Ionicons
                     name={t.icon}
-                    size={13}
+                    size={12}
                     color={printTarget === t.key ? "#2563EB" : "#6B7280"}
                   />
                   <Text
-                    className={`text-[11px] font-bold ml-1 ${
+                    className={`text-[10px] font-bold ml-0.5 ${
                       printTarget === t.key ? "text-blue-700" : "text-gray-600"
                     }`}
                   >
@@ -962,9 +971,10 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
               </Text>
               <View className="flex-row bg-gray-100 p-1 rounded-xl border border-gray-200">
                 {[
-                  { key: "both", label: "Both (Customer + KOT)", icon: "copy-outline" },
+                  { key: "both", label: "Both (Cust+KOT)", icon: "copy-outline" },
                   { key: "customer", label: "Customer", icon: "receipt-outline" },
                   { key: "cooker", label: "Cooker KOT", icon: "restaurant-outline" },
+                  { key: "none", label: "No Print", icon: "close-circle-outline" },
                 ].map((t) => (
                   <TouchableOpacity
                     key={t.key}
@@ -977,11 +987,11 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
                   >
                     <Ionicons
                       name={t.icon}
-                      size={13}
+                      size={12}
                       color={printTarget === t.key ? "#2563EB" : "#6B7280"}
                     />
                     <Text
-                      className={`text-[11px] font-bold ml-1 ${
+                      className={`text-[10px] font-bold ml-0.5 ${
                         printTarget === t.key ? "text-blue-700" : "text-gray-600"
                       }`}
                     >
@@ -995,7 +1005,8 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
             {/* ─── BLUETOOTH THERMAL PRINTER ACTION BUTTON ─── */}
             <TouchableOpacity
               onPress={async () => {
-                await printBill(createdInvoice, storeInfo, billFormatOptions, printTarget);
+                const target = printTarget === "none" ? "both" : printTarget;
+                await printBill(createdInvoice, storeInfo, billFormatOptions, target);
               }}
               className="w-full bg-gray-900 py-3 rounded-xl flex-row items-center justify-center mb-3 shadow-sm"
             >
@@ -1005,7 +1016,9 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
                   ? "Print Both (2 Customer + 1 Cooker KOT)"
                   : printTarget === "customer"
                   ? "Print Customer Copies Only"
-                  : "Print Cooker KOT Slip Only"}
+                  : printTarget === "cooker"
+                  ? "Print Cooker KOT Slip Only"
+                  : "Thermal Print (Tap to Print Both)"}
               </Text>
             </TouchableOpacity>
 

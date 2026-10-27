@@ -46,15 +46,16 @@ router.get("/public/:id", async (req, res) => {
     const storeName = storeUser?.businessName || invoice.businessName || "THE A POP JAKO BITES";
     const phone = storeUser?.phone || storeUser?.whatsappNumber || "7003317615";
 
-    const dateStr = invoice.createdAt
-      ? new Date(invoice.createdAt).toLocaleString("en-IN", {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        })
-      : new Date().toLocaleString("en-IN");
+    const rawDate = invoice.createdAt || invoice.invoiceDate || new Date();
+    const dateStr = new Date(rawDate).toLocaleString("en-IN", {
+      timeZone: "Asia/Kolkata",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
 
     const itemsHtml = (invoice.items || [])
       .map(
@@ -478,12 +479,14 @@ router.post("/", async (req, res) => {
       .map((it, idx) => `• ${it.name} x ${it.quantity} = Rs.${it.total}`)
       .join("\n");
 
-    const dateFormatted = new Date().toLocaleDateString("en-IN", {
+    const dateFormatted = new Date().toLocaleString("en-IN", {
+      timeZone: "Asia/Kolkata",
       day: "2-digit",
       month: "short",
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
+      hour12: true,
     });
 
     let savingsText = "";
@@ -590,12 +593,14 @@ router.post("/:id/send-whatsapp", async (req, res) => {
       .map((it) => `• ${it.name} x ${it.quantity} = Rs.${it.total}`)
       .join("\n");
 
-    const dateFormatted = new Date(invoice.createdAt || invoice.invoiceDate).toLocaleDateString("en-IN", {
+    const dateFormatted = new Date(invoice.createdAt || invoice.invoiceDate || new Date()).toLocaleString("en-IN", {
+      timeZone: "Asia/Kolkata",
       day: "2-digit",
       month: "short",
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
+      hour12: true,
     });
 
     const whatsappText =

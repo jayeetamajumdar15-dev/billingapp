@@ -136,16 +136,16 @@ export function generateInvoicePdfBuffer(invoice, storeInfo = {}) {
       doc.y = tokenBoxY + 39;
 
       // ─── 3. BILL METADATA ────────────────────────────────────────────
-      const dateStr = invoice.createdAt || invoice.invoiceDate
-        ? new Date(invoice.createdAt || invoice.invoiceDate).toLocaleString("en-IN", {
-            day: "2-digit",
-            month: "short",
-            year: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: true,
-          })
-        : new Date().toLocaleString("en-IN");
+      const rawDate = invoice.createdAt || invoice.invoiceDate || new Date();
+      const dateStr = new Date(rawDate).toLocaleString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      });
 
       const paymentMode = invoice.paymentMode || "CASH";
       const custName = invoice.partyName || "Walk-in Customer";
