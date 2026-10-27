@@ -47,28 +47,31 @@ router.get("/public/:id", async (req, res) => {
     const phone = storeUser?.phone || storeUser?.whatsappNumber || "7003317615";
 
     const rawDate = invoice.createdAt || invoice.invoiceDate || new Date();
-    const dateStr = new Date(rawDate).toLocaleString("en-IN", {
+    const petpoojaDate = new Intl.DateTimeFormat("en-GB", {
       timeZone: "Asia/Kolkata",
       day: "2-digit",
-      month: "short",
+      month: "2-digit",
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
-      hour12: true,
-    });
+      hour12: false,
+    }).format(new Date(rawDate)).replace(",", "");
 
     const itemsHtml = (invoice.items || [])
       .map(
         (it, idx) => `
-      <tr style="border-bottom: 1px solid #E5E7EB;">
-        <td style="padding: 10px 8px; font-size: 14px; font-weight: 600; color: #1F2937;">${idx + 1}. ${it.name}</td>
-        <td style="padding: 10px 8px; font-size: 14px; text-align: center; color: #4B5563;">${it.quantity} ${it.unit || "PCS"}</td>
-        <td style="padding: 10px 8px; font-size: 14px; text-align: right; color: #4B5563;">Rs. ${Number(it.sellingPrice || it.price || 0).toFixed(0)}</td>
-        <td style="padding: 10px 8px; font-size: 14px; text-align: right; font-weight: 700; color: #111827;">Rs. ${Number(it.total || 0).toFixed(0)}</td>
+      <tr style="border-bottom: 1px solid #F1F5F9; ${idx % 2 === 1 ? 'background:#F8FAFC;' : ''}">
+        <td style="padding: 12px 10px; font-size: 13.5px; font-weight: 600; color: #0F172A;">${it.name}</td>
+        <td style="padding: 12px 6px; font-size: 13px; text-align: center; color: #475569;">${it.quantity}</td>
+        <td style="padding: 12px 6px; font-size: 13px; text-align: right; color: #475569;">Rs. ${Number(it.sellingPrice || it.price || 0).toFixed(0)}</td>
+        <td style="padding: 12px 10px; font-size: 13.5px; text-align: right; font-weight: 700; color: #0F172A;">Rs. ${Number(it.total || 0).toFixed(0)}</td>
       </tr>
     `
       )
       .join("");
+
+    const isPaid = (invoice.paymentStatus || "PAID").toUpperCase() === "PAID";
+    const totalSavings = (invoice.discountTotal || 0) + (invoice.regularDiscountAmount || 0);
 
     const html = `
       <!DOCTYPE html>
@@ -77,53 +80,104 @@ router.get("/public/:id", async (req, res) => {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Invoice #${invoice.invoiceNumber} - ${storeName}</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
         <style>
           * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #F3F4F6; padding: 16px; display: flex; justify-content: center; }
-          .card { background: #FFFFFF; max-width: 460px; width: 100%; border-radius: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); overflow: hidden; border: 1px solid #E5E7EB; }
-          .header { background: #111827; color: white; padding: 24px 20px; text-align: center; }
-          .store-name { font-size: 20px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 4px; }
-          .meta-box { background: #F9FAFB; padding: 16px; border-bottom: 1px solid #E5E7EB; font-size: 13px; color: #374151; }
-          .row { display: flex; justify-content: space-between; margin-bottom: 6px; }
-          .table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-          .total-box { background: #111827; color: white; padding: 16px; border-radius: 12px; margin: 16px; display: flex; justify-content: space-between; align-items: center; }
-          .btn { display: block; text-align: center; background: #059669; color: white; text-decoration: none; font-weight: 700; font-size: 15px; padding: 14px; border-radius: 12px; margin: 16px; box-shadow: 0 2px 8px rgba(5,150,105,0.3); }
-          .footer { text-align: center; font-size: 11px; color: #6B7280; padding: 0 16px 20px; }
+          body {
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #0B0F19;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 16px;
+          }
+          .card {
+            background: #FFFFFF;
+            max-width: 440px;
+            width: 100%;
+            border-radius: 24px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+            overflow: hidden;
+            position: relative;
+          }
+          .accent-top { height: 6px; background: linear-gradient(90deg, #0F172A 0%, #059669 100%); }
+          .header { padding: 24px 20px 16px; text-align: center; }
+          .store-name { font-size: 19px; font-weight: 800; color: #0F172A; text-transform: uppercase; letter-spacing: 0.5px; }
+          .badges { display: flex; justify-content: center; gap: 8px; margin-top: 6px; }
+          .pill { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
+          .pill-tax { background: #F1F5F9; color: #334155; }
+          .pill-status { background: ${isPaid ? '#DCFCE7' : '#FEE2E2'}; color: ${isPaid ? '#15803D' : '#B91C1C'}; }
+          .token-box { margin: 12px 20px; background: #F8FAFC; border: 1.5px dashed #CBD5E1; border-radius: 14px; padding: 10px; text-align: center; }
+          .token-lbl { font-size: 10px; font-weight: 700; color: #64748B; letter-spacing: 1px; text-transform: uppercase; }
+          .token-num { font-size: 26px; font-weight: 800; color: #0F172A; }
+          .meta-box { margin: 0 20px 12px; background: #F8FAFC; border-radius: 14px; padding: 12px 14px; font-size: 12.5px; color: #334155; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+          .meta-item b { color: #0F172A; }
+          .table-box { padding: 0 16px; }
+          .table { width: 100%; border-collapse: collapse; }
+          .table th { padding: 8px 10px; background: #0F172A; color: white; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+          .table th:first-child { border-top-left-radius: 8px; }
+          .table th:last-child { border-top-right-radius: 8px; }
+          .total-box { margin: 16px 20px 10px; background: #0F172A; color: white; padding: 16px 18px; border-radius: 16px; display: flex; justify-content: space-between; align-items: center; }
+          .savings-card { margin: 0 20px 12px; background: #DCFCE7; border: 1px solid #86EFAC; color: #15803D; padding: 10px; border-radius: 12px; text-align: center; font-size: 12.5px; font-weight: 700; }
+          .btn-download { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 12px 20px; background: #059669; color: white; text-decoration: none; font-weight: 700; font-size: 14.5px; padding: 14px; border-radius: 14px; box-shadow: 0 4px 14px rgba(5,150,105,0.3); transition: transform 0.15s; }
+          .btn-download:active { transform: scale(0.98); }
+          .footer { text-align: center; font-size: 11.5px; color: #64748B; padding: 10px 20px 22px; }
         </style>
       </head>
       <body>
         <div class="card">
+          <div class="accent-top"></div>
           <div class="header">
             <div class="store-name">${storeName}</div>
-            <div style="font-size: 12px; color: #9CA3AF;">Official Digital Tax Invoice</div>
+            <div class="badges">
+              <span class="pill pill-tax">TAX INVOICE</span>
+              <span class="pill pill-status">${isPaid ? 'PAID' : 'DUE'}</span>
+            </div>
+            ${storeUser?.address ? `<div style="font-size: 11.5px; color: #64748B; margin-top: 4px;">${storeUser.address}</div>` : ''}
+            <div style="font-size: 11.5px; color: #64748B;">Helpline: +${phone}</div>
           </div>
+
+          <div class="token-box">
+            <div class="token-lbl">Order / Token Number</div>
+            <div class="token-num">#${invoice.invoiceNumber || '1'}</div>
+          </div>
+
           <div class="meta-box">
-            <div class="row"><span>Bill No: <b>#${invoice.invoiceNumber}</b></span><span>Date: <b>${dateStr}</b></span></div>
-            <div class="row"><span>Customer: <b>${invoice.partyName || "Cash Customer"}</b></span><span>Status: <b style="color:#059669;">${invoice.paymentStatus || "PAID"}</b></span></div>
-            <div class="row"><span>Payment Mode: <b>${invoice.paymentMode || "CASH"}</b></span><span>Helpline: <b>${phone}</b></span></div>
+            <div class="meta-item">Bill No: <b>#${invoice.invoiceNumber}</b></div>
+            <div class="meta-item">Date: <b>${petpoojaDate}</b></div>
+            <div class="meta-item">Customer: <b>${invoice.partyName || "Customer"}</b></div>
+            <div class="meta-item">Payment: <b style="color: #059669;">${invoice.paymentMode || "CASH"}</b></div>
           </div>
-          <div style="padding: 12px 16px;">
+
+          <div class="table-box">
             <table class="table">
               <thead>
-                <tr style="border-bottom: 2px solid #D1D5DB; font-size: 12px; color: #6B7280; text-transform: uppercase;">
-                  <th style="padding: 6px 8px; text-align: left;">Item</th>
-                  <th style="padding: 6px 8px; text-align: center;">Qty</th>
-                  <th style="padding: 6px 8px; text-align: right;">Rate</th>
-                  <th style="padding: 6px 8px; text-align: right;">Total</th>
+                <tr>
+                  <th style="text-align: left;">Item</th>
+                  <th style="text-align: center;">Qty</th>
+                  <th style="text-align: right;">Rate</th>
+                  <th style="text-align: right;">Total</th>
                 </tr>
               </thead>
               <tbody>${itemsHtml}</tbody>
             </table>
           </div>
+
           <div class="total-box">
-            <span style="font-size: 15px; font-weight: 600;">GRAND TOTAL</span>
-            <span style="font-size: 20px; font-weight: 900;">Rs. ${Number(invoice.grandTotal || 0).toFixed(2)}</span>
+            <span style="font-size: 13.5px; font-weight: 600; letter-spacing: 0.5px;">GRAND TOTAL</span>
+            <span style="font-size: 22px; font-weight: 800;">Rs. ${Number(invoice.grandTotal || 0).toFixed(2)}</span>
           </div>
-          <a class="btn" href="/api/invoices/public/${invoice._id}/pdf" download="Invoice_${invoice.invoiceNumber}.pdf">
+
+          ${totalSavings > 0 ? `<div class="savings-card">🎉 TOTAL SAVINGS: Rs. ${totalSavings.toFixed(0)} ON THIS BILL</div>` : ''}
+
+          <a class="btn-download" href="/api/invoices/public/${invoice._id}/pdf" download="Bill_${invoice.invoiceNumber || 'receipt'}.pdf">
             📥 Download Official PDF Receipt
           </a>
+
           <div class="footer">
-            Thank you for shopping with us! Visit again.
+            Thank you for dining with us! Have a wonderful day.
           </div>
         </div>
       </body>
@@ -479,47 +533,30 @@ router.post("/", async (req, res) => {
       .map((it, idx) => `• ${it.name} x ${it.quantity} = Rs.${it.total}`)
       .join("\n");
 
-    const dateFormatted = new Date().toLocaleString("en-IN", {
+    // Format date in exact Petpooja style (DD/MM/YYYY HH:mm, Asia/Kolkata 24-hr)
+    const petpoojaDate = new Intl.DateTimeFormat("en-GB", {
       timeZone: "Asia/Kolkata",
       day: "2-digit",
-      month: "short",
+      month: "2-digit",
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
-      hour12: true,
-    });
+      hour12: false,
+    }).format(new Date(invoice.createdAt || invoice.invoiceDate || new Date())).replace(",", "");
 
-    let savingsText = "";
-    if (regularDiscountAmount > 0) {
-      savingsText += `🎉 You saved Rs.${regularDiscountAmount} with Regular Customer Discount!\n`;
-    }
-    if (freebieItem) {
-      savingsText += `🎁 Free Gift: ${freebieItem}\n`;
-    }
+    const storeTitle = business.businessName || "THE A POP JAKO BITES";
+    const amountVal = Number(grandTotal || 0).toFixed(0);
 
+    // Exact Petpooja WhatsApp Notification Format with interactive feedback options
     const whatsappText =
-      `🧾 *TAX INVOICE / BILL*\n` +
-      `*${(business.businessName || "STORE").toUpperCase()}*\n` +
-      `----------------------------------------\n` +
-      `Dear *${customer ? customer.name : partyName || "Customer"}*,\n` +
-      `Thank you for shopping with us! Here is your bill:\n\n` +
-      `📋 *Bill No:* #${invoiceNumber}\n` +
-      `📅 *Date:* ${dateFormatted}\n` +
-      `💳 *Payment:* ${mode} (${paymentStatus})\n` +
-      `💰 *Grand Total:* *Rs. ${grandTotal}*\n` +
-      `----------------------------------------\n` +
-      `${itemsSummary}\n` +
-      `----------------------------------------\n` +
-      `Subtotal: Rs.${calculatedSubtotal}\n` +
-      (discountAmount > 0 ? `Discount: -Rs.${discountAmount}\n` : "") +
-      savingsText +
-      `----------------------------------------\n` +
-      `📥 *Download / View PDF Bill:*\n` +
-      `${publicPdfUrl}\n` +
-      `----------------------------------------\n` +
-      `📎 Your official PDF bill is attached.\n` +
-      `🙏 Thank you! Visit again.\n` +
-      `📞 Helpline: ${business.phone || business.whatsappNumber || "7003317615"}`;
+      `Dear Customer,\n\n` +
+      `Thank you for your recent order at *${storeTitle}*!\n` +
+      `Your invoice is now available. 🪄\n\n` +
+      `💰 Amount : *Rs.${amountVal}*\n` +
+      `📅 Date : ${petpoojaDate}\n` +
+      `🔗 View Invoice : ${publicPdfUrl}\n\n` +
+      `How was your experience with your order at *${storeTitle}* today?\n\n` +
+      `[ Loved it! ]   [ Okay ]   [ Needs Improvement ]`;
 
     // 3. Generate High-Res PDF Buffer & Send to WhatsApp
     let pdfBuffer = null;
@@ -593,38 +630,28 @@ router.post("/:id/send-whatsapp", async (req, res) => {
       .map((it) => `• ${it.name} x ${it.quantity} = Rs.${it.total}`)
       .join("\n");
 
-    const dateFormatted = new Date(invoice.createdAt || invoice.invoiceDate || new Date()).toLocaleString("en-IN", {
+    const petpoojaDate = new Intl.DateTimeFormat("en-GB", {
       timeZone: "Asia/Kolkata",
       day: "2-digit",
-      month: "short",
+      month: "2-digit",
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
-      hour12: true,
-    });
+      hour12: false,
+    }).format(new Date(invoice.createdAt || invoice.invoiceDate || new Date())).replace(",", "");
+
+    const storeTitle = business.businessName || "THE A POP JAKO BITES";
+    const amountVal = Number(invoice.grandTotal || 0).toFixed(0);
 
     const whatsappText =
-      `🧾 *TAX INVOICE / BILL*\n` +
-      `*${(business.businessName || "STORE").toUpperCase()}*\n` +
-      `----------------------------------------\n` +
-      `Dear *${invoice.partyName || "Customer"}*,\n` +
-      `Thank you for shopping with us! Here is your bill:\n\n` +
-      `📋 *Bill No:* #${invoice.invoiceNumber}\n` +
-      `📅 *Date:* ${dateFormatted}\n` +
-      `💳 *Payment:* ${invoice.paymentMode} (${invoice.paymentStatus})\n` +
-      `💰 *Grand Total:* *Rs. ${invoice.grandTotal}*\n` +
-      `----------------------------------------\n` +
-      `${itemsSummary}\n` +
-      `----------------------------------------\n` +
-      `Subtotal: Rs.${invoice.subtotal}\n` +
-      (invoice.discountTotal > 0 ? `Discount: -Rs.${invoice.discountTotal}\n` : "") +
-      `----------------------------------------\n` +
-      `📥 *Download / View PDF Bill:*\n` +
-      `${publicPdfUrl}\n` +
-      `----------------------------------------\n` +
-      `📎 Your official PDF bill is attached.\n` +
-      `🙏 Thank you! Visit again.\n` +
-      `📞 Helpline: ${business.phone || business.whatsappNumber || "7003317615"}`;
+      `Dear Customer,\n\n` +
+      `Thank you for your recent order at *${storeTitle}*!\n` +
+      `Your invoice is now available. 🪄\n\n` +
+      `💰 Amount : *Rs.${amountVal}*\n` +
+      `📅 Date : ${petpoojaDate}\n` +
+      `🔗 View Invoice : ${publicPdfUrl}\n\n` +
+      `How was your experience with your order at *${storeTitle}* today?\n\n` +
+      `[ Loved it! ]   [ Okay ]   [ Needs Improvement ]`;
 
     let pdfBuffer = null;
     try {
