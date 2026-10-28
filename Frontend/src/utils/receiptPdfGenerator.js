@@ -1,32 +1,61 @@
-/**
- * Thermal Receipt PDF Generator
- * Generates thermal receipts matching custom formatting:
- * - 2 Bills for Customers (Customer Copy + Store Copy)
- * - 1 Short Bill for Cookers (Kitchen Order Ticket / KOT)
- * Uses expo-print + expo-sharing on native, window.print on web.
- */
 import { Platform, Linking } from "react-native";
-import { getApiBaseUrl, getAuthToken } from "../config/api";
+import { getApiBaseUrl, getAuthToken, loadStoredToken } from "../config/api";
 
-/**
- * Downloads the backend-generated PDF invoice (Zudio / Petpooja style) and
- * opens the native share sheet so the user can send it directly via WhatsApp.
- * On Web, it triggers a browser download.
- *
- * @param {Object} invoice  - Invoice object (must have _id)
- * @param {string} fileName - Optional custom file name
- * @returns {Promise<{success:boolean, error?:string}>}
- */
+export const INVOICE_STYLES = [
+  {
+    id: "modern_zudio",
+    name: "Modern Sleek (Zudio Style)",
+    description: "Rounded summary badges, bold order token & savings card",
+    badge: "Recommended",
+  },
+  {
+    id: "classic_thermal",
+    name: "Classic Thermal POS",
+    description: "Standard monospace font, dashed dividers & kitchen KOT",
+    badge: "High Speed",
+  },
+  {
+    id: "elegant_cafe",
+    name: "Elegant Bistro & Cafe",
+    description: "Serif typography, double line dividers & luxury dining look",
+    badge: "Dine-In & Cafe",
+  },
+  {
+    id: "gst_detailed",
+    name: "GST Tax Invoice (Official)",
+    description: "Itemized tax rates, HSN column & signature stamp block",
+    badge: "GST Official",
+  },
+  {
+    id: "minimal_compact",
+    name: "Minimalist Compact",
+    description: "Tight margins, maximum item density, paper saver",
+    badge: "Eco Saver",
+  },
+  {
+    id: "dark_voucher",
+    name: "Contemporary Voucher",
+    description: "Dark header banner, high-impact totals & modern contrast",
+    badge: "Stylish",
+  },
+];
+
 export async function shareBackendPdf(invoice, fileName = null) {
   const invoiceId = invoice?._id;
   if (!invoiceId) return { success: false, error: "Invoice ID missing" };
 
-  const token = getAuthToken();
-  const baseUrl = getApiBaseUrl(); // e.g. https://billing-app-backend-lake.vercel.app/api
-  const pdfUrl = `${baseUrl}/invoices/${invoiceId}/pdf`;
+  let token = getAuthToken();
+  if (!token) {
+    try {
+      token = await loadStoredToken();
+    } catch {}
+  }
+
+  const baseUrl = getApiBaseUrl();
+  const rawPdfUrl = `${baseUrl}/invoices/${invoiceId}/pdf`;
+  const pdfUrl = token ? `${rawPdfUrl}?token=${encodeURIComponent(token)}` : rawPdfUrl;
   const safeFileName = fileName || `Invoice_${invoice.invoiceNumber || invoiceId}.pdf`;
 
-  // ─── WEB ────────────────────────────────────────────────────────────────────
   if (Platform.OS === "web") {
     try {
       const response = await fetch(pdfUrl, {
@@ -45,12 +74,17 @@ export async function shareBackendPdf(invoice, fileName = null) {
       return { success: true };
     } catch (err) {
       console.warn("[PDF] Web download fallback:", err.message);
-      try { Linking.openURL(pdfUrl); } catch {}
+      try {
+        if (typeof window !== "undefined" && window.open) {
+          window.open(pdfUrl, "_blank");
+        } else {
+          Linking.openURL(pdfUrl);
+        }
+      } catch {}
       return { success: true };
     }
   }
 
-  // ─── NATIVE (Android / iOS) ─────────────────────────────────────────────────
   try {
     const FileSystem = await import("expo-file-system");
     const Sharing = await import("expo-sharing");
@@ -73,14 +107,12 @@ export async function shareBackendPdf(invoice, fileName = null) {
         UTI: "com.adobe.pdf",
       });
     } else {
-      // Fallback: open the public URL in browser
       const publicUrl = `${baseUrl.replace(/\/api$/, "")}/api/invoices/public/${invoiceId}/pdf`;
       Linking.openURL(publicUrl);
     }
     return { success: true, uri: downloadResult.uri };
   } catch (err) {
     console.error("[PDF] Native share error:", err.message);
-    // Last resort — open public (no-auth) view URL
     try {
       const publicUrl = `${getApiBaseUrl().replace(/\/api$/, "")}/api/invoices/public/${invoiceId}/pdf`;
       Linking.openURL(publicUrl);
@@ -114,7 +146,60 @@ function formatReceiptDate(dateStr) {
   }
 }
 
-function getReceiptStyles(receiptWidth, fontBase, isNarrow) {
+function getReceiptStyles(receiptWidth, fontBase, isNarrow, invoiceStyle = "modern_zudio") {
+  let styleSpecificCss = "";
+
+  if (invoiceStyle === "elegant_cafe") {
+    styleSpecificCss = `
+      body { font-family: 'Georgia', serif; }
+      .receipt { border: 1.5px solid #D1D5DB; }
+      .divider { border-top: 1px double #9CA3AF; }
+      .copy-badge { font-family: 'Georgia', serif; letter-spacing: 2px; border-color: #4B5563; }
+      .store-name { font-family: 'Georgia', serif; letter-spacing: 2px; }
+      .grand-total td { font-family: 'Georgia', serif; border-top: 2px solid #374151; }
+    `;
+  } else if (invoiceStyle === "modern_zudio") {
+    styleSpecificCss = `
+      .receipt { border-radius: 12px; border: 1px solid #E2E8F0; box-shadow: 0 4px 14px rgba(0,0,0,0.06); }
+      .copy-badge { background: #0F172A; color: #FFFFFF; border: none; border-radius: 12px; padding: 2px 8px; }
+      .store-name { letter-spacing: 0.5px; color: #0F172A; }
+      .divider { border-top: 1px dashed #CBD5E1; }
+      .token-box { background: #F8FAFC; border: 1.5px dashed #94A3B8; border-radius: 8px; padding: 6px; text-align: center; margin: 6px 0; }
+      .grand-total td { background: #0F172A; color: #FFFFFF; padding: 6px 8px !important; border-radius: 6px; }
+      .savings-pill { background: #DCFCE7; color: #15803D; padding: 4px; border-radius: 6px; text-align: center; font-weight: 700; margin: 6px 0; font-size: 11px; }
+    `;
+  } else if (invoiceStyle === "gst_detailed") {
+    styleSpecificCss = `
+      body { font-family: Arial, sans-serif; }
+      .receipt { border: 1.5px solid #000; }
+      .divider { border-top: 1px solid #000; }
+      .items-table { border: 1px solid #000; }
+      .items-table th { background: #E2E8F0; border-bottom: 1px solid #000; border-right: 1px solid #CBD5E1; }
+      .items-table td { border-bottom: 1px solid #E2E8F0; border-right: 1px solid #E2E8F0; padding: 3px !important; }
+      .grand-total td { border-top: 2px solid #000; background: #F1F5F9; }
+      .sign-box { border-top: 1px solid #000; margin-top: 16px; padding-top: 25px; text-align: right; font-size: 10px; font-weight: 700; }
+    `;
+  } else if (invoiceStyle === "minimal_compact") {
+    styleSpecificCss = `
+      .receipt { padding: 6px 4px !important; }
+      .store-name { font-size: 13px !important; margin: 2px 0 !important; }
+      .meta { font-size: 10px !important; margin: 1px 0 !important; }
+      .divider { margin: 3px 0 !important; }
+      .items-table td { padding: 1px 2px !important; font-size: 10.5px !important; }
+      .grand-total td { font-size: 13px !important; padding-top: 2px !important; }
+      .footer { margin-top: 4px !important; font-size: 10px !important; }
+    `;
+  } else if (invoiceStyle === "dark_voucher") {
+    styleSpecificCss = `
+      .receipt { border: 2px solid #000000; }
+      .header { background: #000000; color: #FFFFFF; padding: 8px 4px; margin: -10px -10px 8px -10px; }
+      .header .store-name { color: #FFFFFF !important; }
+      .header div { color: #E2E8F0; }
+      .copy-badge { background: #FFFFFF; color: #000000; font-weight: 900; }
+      .grand-total td { background: #000000; color: #FFFFFF; padding: 4px !important; }
+    `;
+  }
+
   return `
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -230,6 +315,7 @@ function getReceiptStyles(receiptWidth, fontBase, isNarrow) {
         padding-top: 4px;
       }
     }
+    ${styleSpecificCss}
   `;
 }
 
@@ -252,6 +338,7 @@ function buildCustomerReceiptCard(invoice, storeInfo = {}, options = {}, copyTit
     showGstin = true,
     footerNote = "Thank you! Visit again.",
     showBillType = true,
+    invoiceStyle = "modern_zudio",
   } = options;
 
   const isNarrow = paperWidth === "2inch" || paperWidth === "3inch";
@@ -263,8 +350,9 @@ function buildCustomerReceiptCard(invoice, storeInfo = {}, options = {}, copyTit
     const qty = it.quantity || 0;
     const rate = it.sellingPrice || it.rate || 0;
     const total = it.total || qty * rate;
+    const hsnText = invoiceStyle === "gst_detailed" && it.hsnCode ? `<div style="font-size:9px;color:#64748B;">HSN: ${it.hsnCode}</div>` : "";
     return `<tr>
-      <td style="padding:2px 0;word-break:break-word;max-width:${isNarrow ? "100px" : "200px"}">${name}</td>
+      <td style="padding:2px 0;word-break:break-word;max-width:${isNarrow ? "100px" : "200px"}">${name}${hsnText}</td>
       <td style="padding:2px 4px;text-align:center">${qty}</td>
       <td style="padding:2px 4px;text-align:right">${rate}</td>
       <td style="padding:2px 0;text-align:right;font-weight:700">${total}</td>
@@ -280,7 +368,21 @@ function buildCustomerReceiptCard(invoice, storeInfo = {}, options = {}, copyTit
   const logoHtml = showLogo && logo ? `<div style="text-align:center;margin-bottom:6px"><img src="${logo}" style="width:${isNarrow ? "60px" : "80px"};height:${isNarrow ? "60px" : "80px"};object-fit:contain;border-radius:6px" /></div>` : "";
   const gstinHtml = showGstin && gstin ? `<div>GSTIN: ${gstin}</div>` : "";
   const emailHtml = showEmail && email ? `<div>@: ${email}</div>` : "";
-  const tokenHtml = showTokenNumber ? `<div style="font-size:${isNarrow ? "28px" : "36px"};font-weight:900;letter-spacing:2px;margin:4px 0">${tokenDisplay}</div>` : "";
+  
+  let tokenHtml = "";
+  if (showTokenNumber) {
+    if (invoiceStyle === "modern_zudio") {
+      tokenHtml = `
+        <div class="token-box">
+          <div style="font-size:10px;font-weight:700;color:#64748B;letter-spacing:1px;text-transform:uppercase;">Order Token</div>
+          <div style="font-size:${isNarrow ? "24px" : "30px"};font-weight:900;color:#0F172A;">#${tokenDisplay}</div>
+        </div>
+      `;
+    } else {
+      tokenHtml = `<div style="font-size:${isNarrow ? "28px" : "36px"};font-weight:900;letter-spacing:2px;margin:4px 0">${tokenDisplay}</div>`;
+    }
+  }
+
   const createdOn = formatReceiptDate(invoice?.createdAt || invoice?.invoiceDate);
   const billToCustomer = (invoice?.partyName && invoice.partyName !== "Walk-in Customer")
     ? `<div>Bill To: ${invoice.partyName}${showCustomerPhone && invoice?.partyPhone ? " | " + invoice.partyPhone : ""}</div>`
@@ -290,6 +392,15 @@ function buildCustomerReceiptCard(invoice, storeInfo = {}, options = {}, copyTit
     : "";
   const freebieRow = invoice?.freebieItemGiven
     ? `<tr><td colspan="3">Freebie</td><td style="text-align:right;color:#2563eb;font-weight:700">${invoice.freebieItemGiven}</td></tr>`
+    : "";
+
+  const totalSavings = (invoice?.discountTotal || 0) + (invoice?.regularDiscountAmount || 0);
+  const savingsHtml = invoiceStyle === "modern_zudio" && totalSavings > 0
+    ? `<div class="savings-pill">🎉 TOTAL SAVINGS: Rs. ${totalSavings.toFixed(0)}</div>`
+    : "";
+
+  const signHtml = invoiceStyle === "gst_detailed"
+    ? `<div class="sign-box">For ${businessName}<br/><br/>Authorized Signatory</div>`
     : "";
 
   return `
@@ -305,9 +416,9 @@ function buildCustomerReceiptCard(invoice, storeInfo = {}, options = {}, copyTit
         ${gstinHtml}
       </div>
       <hr class="divider"/>
-      <div class="meta">Bill No: ${tokenDisplay}</div>
+      <div class="meta">Bill No: #${tokenDisplay}</div>
       <div class="meta">Created On: ${createdOn}</div>
-      ${showBillType ? `<div class="meta">Bill To: ${paymentMode === "CREDIT" ? "Credit" : "Cash Sale"}</div>` : ""}
+      ${showBillType ? `<div class="meta">Payment Mode: ${paymentMode === "CREDIT" ? "Credit" : "Cash / Instant"}</div>` : ""}
       ${billToCustomer}
       <hr class="divider"/>
       <table class="items-table">
@@ -322,9 +433,11 @@ function buildCustomerReceiptCard(invoice, storeInfo = {}, options = {}, copyTit
         ${discountRow}
         ${freebieRow}
         <tr class="grand-total"><td colspan="3">Grand Total</td><td style="text-align:right">Rs. ${invoice?.grandTotal || 0}</td></tr>
-        <tr><td colspan="3" style="padding:4px 0 1px">Payment</td><td style="text-align:right;padding:4px 0 1px;font-weight:700">${paymentMode}</td></tr>
+        <tr><td colspan="3" style="padding:4px 0 1px">Payment Status</td><td style="text-align:right;padding:4px 0 1px;font-weight:700">${paymentMode} (${invoice?.paymentStatus || "PAID"})</td></tr>
         ${paymentBreakdown}
       </table>
+      ${savingsHtml}
+      ${signHtml}
       <hr class="divider"/>
       <div class="footer">${footerNote}</div>
     </div>
@@ -386,15 +499,8 @@ function buildCookerReceiptCard(invoice, storeInfo = {}) {
   `;
 }
 
-/**
- * Builds Full HTML document
- * @param {Object} invoice
- * @param {Object} storeInfo
- * @param {Object} options
- * @param {string} mode: "all" (2 customer + 1 cooker) | "customer" (2 customer copies) | "cooker" (1 cooker slip) | "single" (1 customer copy)
- */
 export function buildReceiptHtml(invoice, storeInfo = {}, options = {}, mode = "all") {
-  const { paperWidth = "2inch" } = options;
+  const { paperWidth = "2inch", invoiceStyle = "modern_zudio" } = options;
   const widthMap = { "2inch": "220px", "3inch": "302px", "A4": "595px", "A5": "420px" };
   const receiptWidth = widthMap[paperWidth] || "220px";
   const isNarrow = paperWidth === "2inch" || paperWidth === "3inch";
@@ -410,7 +516,6 @@ export function buildReceiptHtml(invoice, storeInfo = {}, options = {}, mode = "
   } else if (mode === "cooker" || mode === "kot") {
     bodyContent = buildCookerReceiptCard(invoice, storeInfo);
   } else if (mode === "customer") {
-    // 2 Customer Bills
     bodyContent = `
       ${buildCustomerReceiptCard(invoice, storeInfo, options, "CUSTOMER COPY - 1")}
       <div class="cut-line">✂ - - - - - - - - - - - - - - - - - - ✂</div>
@@ -418,7 +523,6 @@ export function buildReceiptHtml(invoice, storeInfo = {}, options = {}, mode = "
       ${buildCustomerReceiptCard(invoice, storeInfo, options, "CUSTOMER COPY - 2")}
     `;
   } else {
-    // "both" or "all": 2 Customer Bills + 1 Cooker KOT
     bodyContent = `
       ${buildCustomerReceiptCard(invoice, storeInfo, options, "CUSTOMER COPY - 1")}
       <div class="cut-line">✂ - - - - - - - - - - - - - - - - - - ✂</div>
@@ -436,7 +540,7 @@ export function buildReceiptHtml(invoice, storeInfo = {}, options = {}, mode = "
   <meta charset="utf-8"/>
   <title>Bill #${tokenDisplay}</title>
   <style>
-    ${getReceiptStyles(receiptWidth, fontBase, isNarrow)}
+    ${getReceiptStyles(receiptWidth, fontBase, isNarrow, invoiceStyle)}
   </style>
 </head>
 <body>
@@ -447,7 +551,7 @@ export function buildReceiptHtml(invoice, storeInfo = {}, options = {}, mode = "
 
 export async function shareBillAsPdf(invoice, storeInfo = {}, options = {}, mode = "all") {
   try {
-    const safeOpts = { paperWidth: "2inch", ...options };
+    const safeOpts = { paperWidth: "2inch", invoiceStyle: "modern_zudio", ...options };
     const html = buildReceiptHtml(invoice, storeInfo, safeOpts, mode);
 
     if (Platform.OS === "web") {
@@ -485,7 +589,7 @@ export async function shareBillAsPdf(invoice, storeInfo = {}, options = {}, mode
 
 export async function printBill(invoice, storeInfo = {}, options = {}, mode = "all") {
   try {
-    const safeOpts = { paperWidth: "2inch", ...options };
+    const safeOpts = { paperWidth: "2inch", invoiceStyle: "modern_zudio", ...options };
     const html = buildReceiptHtml(invoice, storeInfo, safeOpts, mode);
     if (Platform.OS === "web") {
       const blob = new Blob([html], { type: "text/html" });
@@ -511,9 +615,9 @@ export async function printTestSlip(storeInfo = {}, options = {}, mode = null) {
     createdAt: new Date().toISOString(),
     paymentMode: "CASH",
     items: [
-      { name: "Crispy Chicken Burger", quantity: 2, sellingPrice: 149, total: 298 },
-      { name: "Farmhouse Cheesy Pizza", quantity: 1, sellingPrice: 249, total: 249 },
-      { name: "Cold Coffee Frappe", quantity: 2, sellingPrice: 89, total: 178 },
+      { name: "Crispy Chicken Burger", quantity: 2, sellingPrice: 149, total: 298, hsnCode: "2106" },
+      { name: "Farmhouse Cheesy Pizza", quantity: 1, sellingPrice: 249, total: 249, hsnCode: "2106" },
+      { name: "Cold Coffee Frappe", quantity: 2, sellingPrice: 89, total: 178, hsnCode: "2202" },
     ],
     subtotal: 725,
     regularDiscountAmount: 35,

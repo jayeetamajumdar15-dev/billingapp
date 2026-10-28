@@ -11,16 +11,14 @@ import {
 import { Ionicons, MaterialIcons, FontAwesome5 } from "@expo/vector-icons";
 import { api } from "../config/api";
 import { downloadReportFile } from "../utils/reportDownloader";
-
 export default function ReportsScreen({ onOpenDrawer, onBack }) {
-  const [reportType, setReportType] = useState("sales"); // sales | inventory | parties
-  const [period, setPeriod] = useState("today"); // today | yesterday | week | month
+  const [reportType, setReportType] = useState("sales");
+  const [period, setPeriod] = useState("today");
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [salesData, setSalesData] = useState(null);
   const [inventoryItems, setInventoryItems] = useState([]);
   const [parties, setParties] = useState([]);
-
   const loadData = async () => {
     setLoading(true);
     try {
@@ -46,45 +44,25 @@ export default function ReportsScreen({ onOpenDrawer, onBack }) {
       setLoading(false);
     }
   };
-
   useEffect(() => {
     loadData();
   }, [reportType, period]);
-
   const handleDownload = async (format) => {
     setDownloading(true);
     let url = "";
     let fileName = "";
     let mimeType = format === "pdf" ? "application/pdf" : "text/csv";
-
     const timestamp = new Date().toISOString().slice(0, 10);
-
     if (reportType === "sales") {
-      if (format === "pdf") {
-        url = api.reports.getSalesPdfUrl(`period=${period}`);
-        fileName = `SalesReport_${period}_${timestamp}.pdf`;
-      } else {
-        url = api.reports.getSalesCsvUrl(`period=${period}`);
-        fileName = `SalesReport_${period}_${timestamp}.csv`;
-      }
+      url = api.reports.getSalesPdfUrl(`period=${period}`);
+      fileName = `SalesReport_${period}_${timestamp}.pdf`;
     } else if (reportType === "inventory") {
-      if (format === "pdf") {
-        url = api.reports.getInventoryPdfUrl();
-        fileName = `InventoryReport_${timestamp}.pdf`;
-      } else {
-        url = api.reports.getInventoryCsvUrl();
-        fileName = `InventoryReport_${timestamp}.csv`;
-      }
+      url = api.reports.getInventoryPdfUrl();
+      fileName = `InventoryReport_${timestamp}.pdf`;
     } else if (reportType === "parties") {
-      if (format === "pdf") {
-        url = api.reports.getPartiesPdfUrl();
-        fileName = `CustomerLedger_${timestamp}.pdf`;
-      } else {
-        url = api.reports.getPartiesCsvUrl();
-        fileName = `CustomerLedger_${timestamp}.csv`;
-      }
+      url = api.reports.getPartiesPdfUrl();
+      fileName = `CustomerLedger_${timestamp}.pdf`;
     }
-
     try {
       const res = await downloadReportFile(url, fileName, mimeType);
       if (!res.success && res.error) {
@@ -96,10 +74,8 @@ export default function ReportsScreen({ onOpenDrawer, onBack }) {
       setDownloading(false);
     }
   };
-
   return (
     <View style={{ flex: 1 }} className="flex-1 bg-gray-50">
-      {/* Top Header */}
       <View className="bg-blue-600 px-4 pt-10 pb-4 flex-row items-center justify-between shadow-md">
         <View className="flex-row items-center">
           <TouchableOpacity onPress={onOpenDrawer} className="mr-3 p-1">
@@ -114,7 +90,6 @@ export default function ReportsScreen({ onOpenDrawer, onBack }) {
             </Text>
           </View>
         </View>
-
         <TouchableOpacity
           onPress={loadData}
           disabled={loading}
@@ -123,8 +98,6 @@ export default function ReportsScreen({ onOpenDrawer, onBack }) {
           <Ionicons name="refresh" size={18} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
-
-      {/* Main Tabs (Sales, Inventory, Parties) */}
       <View className="bg-white border-b border-gray-200 px-2 py-2 flex-row justify-around">
         <TouchableOpacity
           onPress={() => setReportType("sales")}
@@ -145,7 +118,6 @@ export default function ReportsScreen({ onOpenDrawer, onBack }) {
             Sales
           </Text>
         </TouchableOpacity>
-
         <TouchableOpacity
           onPress={() => setReportType("inventory")}
           className={`flex-1 py-2 rounded-xl items-center flex-row justify-center mx-1 ${
@@ -165,7 +137,6 @@ export default function ReportsScreen({ onOpenDrawer, onBack }) {
             Inventory
           </Text>
         </TouchableOpacity>
-
         <TouchableOpacity
           onPress={() => setReportType("parties")}
           className={`flex-1 py-2 rounded-xl items-center flex-row justify-center mx-1 ${
@@ -186,13 +157,14 @@ export default function ReportsScreen({ onOpenDrawer, onBack }) {
           </Text>
         </TouchableOpacity>
       </View>
-
       <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ padding: 14, paddingBottom: 100 }}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 14, paddingBottom: 120, flexGrow: 1 }}
+        showsVerticalScrollIndicator={true}
+        keyboardShouldPersistTaps="handled"
+        nestedScrollEnabled={true}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={loadData} />}
       >
-        {/* Date Filter Pills (for Sales) */}
         {reportType === "sales" && (
           <View className="flex-row gap-2 mb-4">
             {[
@@ -221,54 +193,30 @@ export default function ReportsScreen({ onOpenDrawer, onBack }) {
             ))}
           </View>
         )}
-
-        {/* Action Download Buttons */}
         <View className="bg-white rounded-2xl p-4 mb-4 border border-gray-200 shadow-sm">
           <Text className="text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">
             Download Report File
           </Text>
           <Text className="text-xs text-gray-500 mb-3">
-            Export official formatted reports to PDF or Excel spreadsheet for your accountant or records.
+            Export official formatted PDF reports for your accountant, tax filings, or store records.
           </Text>
-
-          <View className="flex-row gap-2.5">
-            <TouchableOpacity
-              onPress={() => handleDownload("pdf")}
-              disabled={downloading}
-              className="flex-1 bg-red-600 py-3 rounded-xl flex-row items-center justify-center shadow-sm active:bg-red-700"
-            >
-              {downloading ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <>
-                  <Ionicons name="document-text" size={17} color="#FFFFFF" />
-                  <Text className="text-white font-extrabold text-xs ml-2">
-                    Download PDF Report
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => handleDownload("csv")}
-              disabled={downloading}
-              className="flex-1 bg-emerald-700 py-3 rounded-xl flex-row items-center justify-center shadow-sm active:bg-emerald-800"
-            >
-              {downloading ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <>
-                  <FontAwesome5 name="file-excel" size={15} color="#FFFFFF" />
-                  <Text className="text-white font-extrabold text-xs ml-2">
-                    Download Excel / CSV
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            onPress={() => handleDownload("pdf")}
+            disabled={downloading}
+            className="w-full bg-red-600 py-3.5 rounded-xl flex-row items-center justify-center shadow-sm active:bg-red-700"
+          >
+            {downloading ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <>
+                <Ionicons name="document-text" size={18} color="#FFFFFF" />
+                <Text className="text-white font-extrabold text-sm ml-2">
+                  Download Official PDF Report
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
         </View>
-
-        {/* Dynamic Metric Cards based on Tab */}
         {reportType === "sales" && salesData && (
           <View className="mb-4">
             <View className="flex-row gap-2.5 mb-2.5">
@@ -281,7 +229,6 @@ export default function ReportsScreen({ onOpenDrawer, onBack }) {
                   {salesData.summary?.totalBills || 0} Bills Generated
                 </Text>
               </View>
-
               <View className="flex-1 bg-white p-3.5 rounded-2xl border border-gray-200 shadow-sm">
                 <Text className="text-[11px] font-bold text-gray-500">Discounts Given</Text>
                 <Text className="text-xl font-black text-emerald-600 mt-1">
@@ -290,7 +237,6 @@ export default function ReportsScreen({ onOpenDrawer, onBack }) {
                 <Text className="text-[10px] text-gray-400 mt-0.5">Customer Savings</Text>
               </View>
             </View>
-
             <View className="flex-row gap-2.5">
               <View className="flex-1 bg-emerald-50/70 p-3 rounded-xl border border-emerald-200">
                 <Text className="text-[10px] font-bold text-emerald-800">Cash Collected</Text>
@@ -298,14 +244,12 @@ export default function ReportsScreen({ onOpenDrawer, onBack }) {
                   Rs. {Number(salesData.summary?.totalCash || 0).toLocaleString("en-IN")}
                 </Text>
               </View>
-
               <View className="flex-1 bg-purple-50/70 p-3 rounded-xl border border-purple-200">
                 <Text className="text-[10px] font-bold text-purple-800">UPI Received</Text>
                 <Text className="text-sm font-black text-purple-900 mt-0.5">
                   Rs. {Number(salesData.summary?.totalUpi || 0).toLocaleString("en-IN")}
                 </Text>
               </View>
-
               <View className="flex-1 bg-blue-50/70 p-3 rounded-xl border border-blue-200">
                 <Text className="text-[10px] font-bold text-blue-800">GST Collected</Text>
                 <Text className="text-sm font-black text-blue-900 mt-0.5">
@@ -315,7 +259,6 @@ export default function ReportsScreen({ onOpenDrawer, onBack }) {
             </View>
           </View>
         )}
-
         {reportType === "inventory" && (
           <View className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm mb-4">
             <View className="flex-row justify-between items-center">
@@ -337,7 +280,6 @@ export default function ReportsScreen({ onOpenDrawer, onBack }) {
             </View>
           </View>
         )}
-
         {reportType === "parties" && (
           <View className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm mb-4">
             <View className="flex-row justify-between items-center">
@@ -359,8 +301,6 @@ export default function ReportsScreen({ onOpenDrawer, onBack }) {
             </View>
           </View>
         )}
-
-        {/* Data Preview Table */}
         <View className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden mb-6">
           <View className="bg-gray-100 px-4 py-3 border-b border-gray-200 flex-row justify-between items-center">
             <Text className="text-xs font-bold text-gray-700 uppercase tracking-wide">
@@ -372,7 +312,6 @@ export default function ReportsScreen({ onOpenDrawer, onBack }) {
             </Text>
             <Text className="text-[10px] text-gray-400 font-medium">Recent Records</Text>
           </View>
-
           {loading ? (
             <View className="py-12 items-center">
               <ActivityIndicator size="small" color="#2563EB" />

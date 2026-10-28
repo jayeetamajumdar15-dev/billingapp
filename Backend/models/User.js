@@ -1,5 +1,4 @@
 import mongoose from "mongoose";
-
 const userSchema = new mongoose.Schema(
   {
     name: {
@@ -53,6 +52,10 @@ const userSchema = new mongoose.Schema(
       enum: ["2inch", "3inch", "A4", "A5"],
       default: "3inch",
     },
+    invoiceStyle: {
+      type: String,
+      default: "modern_zudio",
+    },
     whatsappLinked: {
       type: Boolean,
       default: false,
@@ -61,11 +64,13 @@ const userSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    vipVisitThreshold: {
+      type: Number,
+      default: 3,
+    },
   },
   { timestamps: true }
 );
-
 userSchema.index({ whatsappNumber: 1 });
-
 const User = mongoose.model("User", userSchema);
 export default User;

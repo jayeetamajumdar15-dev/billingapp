@@ -355,7 +355,7 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
         logo: user?.logo || "",
       };
       const target = printTarget === "none" ? "both" : printTarget;
-      const opts = { paperWidth: "2inch", ...billFormatOptions };
+      const opts = { paperWidth: "2inch", invoiceStyle: user?.invoiceStyle || billFormatOptions?.invoiceStyle || "modern_zudio", ...billFormatOptions };
       const res = await printBill(createdInvoice, storeData, opts, target);
       if (res && !res.success) {
         Alert.alert("Print Notice", res.error || "Could not print. Please check printer connection or print spooler.");

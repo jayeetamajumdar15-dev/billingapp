@@ -233,6 +233,100 @@ router.post("/send-bulk-vip-offer", async (req, res) => {
   }
 });
 
+router.post("/bulk-import", async (req, res) => {
+  try {
+    const rawParties = Array.isArray(req.body.parties)
+      ? req.body.parties
+      : Array.isArray(req.body)
+      ? req.body
+      : [];
+
+    if (!rawParties.length) {
+      return res.status(400).json({ success: false, message: "No parties provided for import" });
+    }
+
+    let addedCount = 0;
+    let updatedCount = 0;
+
+    for (const entry of rawParties) {
+      const rawPhone = (entry.phone || entry.whatsappNumber || entry["Phone"] || entry["Mobile"] || "").toString();
+      const cleanPhone = rawPhone.replace(/[^0-9]/g, "").slice(-10);
+      const name = (entry.name || entry["Customer Name"] || entry["Party Name"] || entry["Name"] || "").toString().trim();
+
+      if (!cleanPhone && !name) {
+        continue;
+      }
+
+      const partyName = name || `Customer ${cleanPhone ? cleanPhone.slice(-4) : "Imported"}`;
+      const type = (entry.type || entry["Type"] || "customer").toString().toLowerCase().includes("supp") ? "supplier" : "customer";
+      const isRegular = Boolean(
+        entry.isRegular === true ||
+        entry.isRegular === "true" ||
+        entry["Is Regular"] === "YES" ||
+        entry["Is Regular"] === "true" ||
+        entry["VIP"] === "YES"
+      );
+      const balance = Number(entry.balance ?? entry["Udhar Balance"] ?? entry["Balance"] ?? 0) || 0;
+      const visitCount = Number(entry.visitCount ?? entry["Visits"] ?? entry["Visit Count"] ?? 1) || 1;
+      const totalSpent = Number(entry.totalSpent ?? entry["Total Spent"] ?? 0) || 0;
+
+      let existing = null;
+      if (cleanPhone) {
+        existing = await Party.findOne({
+          userId: req.user._id,
+          $or: [{ phone: cleanPhone }, { whatsappNumber: cleanPhone }],
+        });
+      }
+      if (!existing && name) {
+        existing = await Party.findOne({
+          userId: req.user._id,
+          name: { $regex: new RegExp(`^${partyName.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}$`, "i") },
+        });
+      }
+
+      if (existing) {
+        if (partyName && !partyName.startsWith("Customer ")) {
+          existing.name = partyName;
+        }
+        if (cleanPhone) {
+          existing.phone = cleanPhone;
+          if (!existing.whatsappNumber) existing.whatsappNumber = cleanPhone;
+        }
+        existing.type = type;
+        if (isRegular) existing.isRegular = true;
+        if (balance !== 0) existing.balance = balance;
+        if (visitCount > (existing.visitCount || 0)) existing.visitCount = visitCount;
+        if (totalSpent > (existing.totalSpent || 0)) existing.totalSpent = totalSpent;
+        await existing.save();
+        updatedCount++;
+      } else {
+        await Party.create({
+          userId: req.user._id,
+          name: partyName,
+          phone: cleanPhone || "0000000000",
+          whatsappNumber: cleanPhone || "0000000000",
+          type,
+          isRegular,
+          balance,
+          visitCount,
+          totalSpent,
+        });
+        addedCount++;
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Parties imported successfully (${addedCount} added, ${updatedCount} updated)`,
+      addedCount,
+      updatedCount,
+      totalProcessed: addedCount + updatedCount,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 router.post("/upsert-by-phone", async (req, res) => {
   try {
     const { name, phone } = req.body;

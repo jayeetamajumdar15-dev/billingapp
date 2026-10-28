@@ -6,14 +6,7 @@ import User from "../models/User.js";
 import { protect } from "../middleware/authMiddleware.js";
 import { sendWhatsAppMessage, sendWhatsAppDocument, normalizeWhatsAppNumber } from "../services/whatsappService.js";
 import { generateInvoicePdfBuffer } from "../services/pdfService.js";
-
 const router = express.Router();
-
-// ==========================================
-// PUBLIC UNPROTECTED CUSTOMER ROUTES (Zudio / Petpooja Style)
-// Accessible by customers via WhatsApp link without authentication
-// ==========================================
-
 router.get("/public/:id/pdf", async (req, res) => {
   try {
     const invoice = await Invoice.findById(req.params.id);
@@ -22,7 +15,6 @@ router.get("/public/:id/pdf", async (req, res) => {
     }
     const storeUser = await User.findById(invoice.userId);
     const pdfBuffer = await generateInvoicePdfBuffer(invoice, storeUser || {});
-
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
@@ -35,7 +27,6 @@ router.get("/public/:id/pdf", async (req, res) => {
     return res.status(500).send("Failed to render invoice PDF.");
   }
 });
-
 router.get("/public/:id", async (req, res) => {
   try {
     const invoice = await Invoice.findById(req.params.id);
@@ -45,7 +36,6 @@ router.get("/public/:id", async (req, res) => {
     const storeUser = await User.findById(invoice.userId);
     const storeName = storeUser?.businessName || invoice.businessName || "THE A POP JAKO BITES";
     const phone = storeUser?.phone || storeUser?.whatsappNumber || "7003317615";
-
     const rawDate = invoice.createdAt || invoice.invoiceDate || new Date();
     const petpoojaDate = new Intl.DateTimeFormat("en-GB", {
       timeZone: "Asia/Kolkata",
@@ -56,7 +46,6 @@ router.get("/public/:id", async (req, res) => {
       minute: "2-digit",
       hour12: false,
     }).format(new Date(rawDate)).replace(",", "");
-
     const itemsHtml = (invoice.items || [])
       .map(
         (it, idx) => `
@@ -69,10 +58,8 @@ router.get("/public/:id", async (req, res) => {
     `
       )
       .join("");
-
     const isPaid = (invoice.paymentStatus || "PAID").toUpperCase() === "PAID";
     const totalSavings = (invoice.discountTotal || 0) + (invoice.regularDiscountAmount || 0);
-
     const html = `
       <!DOCTYPE html>
       <html lang="en">
@@ -138,19 +125,16 @@ router.get("/public/:id", async (req, res) => {
             ${storeUser?.address ? `<div style="font-size: 11.5px; color: #64748B; margin-top: 4px;">${storeUser.address}</div>` : ''}
             <div style="font-size: 11.5px; color: #64748B;">Helpline: +${phone}</div>
           </div>
-
           <div class="token-box">
             <div class="token-lbl">Order / Token Number</div>
             <div class="token-num">#${invoice.invoiceNumber || '1'}</div>
           </div>
-
           <div class="meta-box">
             <div class="meta-item">Bill No: <b>#${invoice.invoiceNumber}</b></div>
             <div class="meta-item">Date: <b>${petpoojaDate}</b></div>
             <div class="meta-item">Customer: <b>${invoice.partyName || "Customer"}</b></div>
             <div class="meta-item">Payment: <b style="color: #059669;">${invoice.paymentMode || "CASH"}</b></div>
           </div>
-
           <div class="table-box">
             <table class="table">
               <thead>
@@ -164,18 +148,14 @@ router.get("/public/:id", async (req, res) => {
               <tbody>${itemsHtml}</tbody>
             </table>
           </div>
-
           <div class="total-box">
             <span style="font-size: 13.5px; font-weight: 600; letter-spacing: 0.5px;">GRAND TOTAL</span>
             <span style="font-size: 22px; font-weight: 800;">Rs. ${Number(invoice.grandTotal || 0).toFixed(2)}</span>
           </div>
-
           ${totalSavings > 0 ? `<div class="savings-card">🎉 TOTAL SAVINGS: Rs. ${totalSavings.toFixed(0)} ON THIS BILL</div>` : ''}
-
           <a class="btn-download" href="/api/invoices/public/${invoice._id}/pdf" download="Bill_${invoice.invoiceNumber || 'receipt'}.pdf">
             📥 Download Official PDF Receipt
           </a>
-
           <div class="footer">
             Thank you for dining with us! Have a wonderful day.
           </div>
@@ -189,12 +169,7 @@ router.get("/public/:id", async (req, res) => {
     return res.status(500).send("Error loading bill.");
   }
 });
-
-// ==========================================
-// PROTECTED MERCHANT ROUTES
-// ==========================================
 router.use(protect);
-
 const sendAutomaticWhatsAppBill = async (
   phone,
   message,
@@ -202,14 +177,13 @@ const sendAutomaticWhatsAppBill = async (
   invoiceNumber = "1",
   storeName = "THE A POP JAKO BITES"
 ) => {
-  // 1. Try sending the PDF document directly if available (Baileys WhatsApp Web automation)
   if (pdfBuffer) {
     try {
       const docResult = await sendWhatsAppDocument(
         phone,
         pdfBuffer,
         `Invoice_${invoiceNumber}.pdf`,
-        message // Send full formatted Petpooja/Zudio caption along with the PDF!
+        message
       );
       if (docResult && docResult.success) {
         console.log(`[WhatsApp] Invoice #${invoiceNumber} PDF delivered successfully to +${phone}`);
@@ -219,8 +193,6 @@ const sendAutomaticWhatsAppBill = async (
       console.warn("[WhatsApp] Document send warning:", docErr.message);
     }
   }
-
-  // 2. Fall back to direct WhatsApp text message (contains clickable PDF download link)
   try {
     const directResult = await sendWhatsAppMessage(phone, message);
     if (directResult && directResult.success) {
@@ -230,8 +202,6 @@ const sendAutomaticWhatsAppBill = async (
   } catch (textErr) {
     console.warn("[WhatsApp] Direct message warning:", textErr.message);
   }
-
-  // 3. Fallback to Meta Cloud API if configured
   if (!process.env.WHATSAPP_API_TOKEN || !process.env.WHATSAPP_PHONE_NUMBER_ID) {
     return false;
   }
@@ -261,20 +231,16 @@ const sendAutomaticWhatsAppBill = async (
     return false;
   }
 };
-
 router.get("/", async (req, res) => {
   try {
     const { startDate, endDate, paymentMode, partyId, limit = 50 } = req.query;
     const filter = { userId: req.user._id };
-
     if (paymentMode) {
       filter.paymentMode = paymentMode.toUpperCase();
     }
-
     if (partyId) {
       filter.partyId = partyId;
     }
-
     if (startDate || endDate) {
       filter.invoiceDate = {};
       if (startDate) filter.invoiceDate.$gte = new Date(startDate);
@@ -284,12 +250,10 @@ router.get("/", async (req, res) => {
         filter.invoiceDate.$lte = end;
       }
     }
-
     const invoices = await Invoice.find(filter)
       .sort({ invoiceDate: -1, createdAt: -1 })
       .limit(Number(limit))
       .lean();
-
     return res.status(200).json({
       success: true,
       count: invoices.length,
@@ -304,7 +268,6 @@ router.get("/", async (req, res) => {
     });
   }
 });
-
 router.get("/:id", async (req, res) => {
   try {
     const invoice = await Invoice.findOne({ _id: req.params.id, userId: req.user._id }).lean();
@@ -316,7 +279,6 @@ router.get("/:id", async (req, res) => {
     return res.status(500).json({ success: false, message: "Failed to fetch invoice", error: error.message });
   }
 });
-
 router.post("/", async (req, res) => {
   try {
     const {
@@ -333,30 +295,23 @@ router.post("/", async (req, res) => {
       customFreebieItem = "",
       notes,
     } = req.body;
-
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ success: false, message: "At least one item is required" });
     }
-
     let customer = null;
     let isRegularCustomer = false;
     let regularDiscountPercent = Number(customDiscountPercent) || 0;
     let freebieItem = (customFreebieItem || "").trim();
-
-    // Normalize phone number inputs
     const typedDigits = (partyPhone || "").toString().replace(/[^0-9]/g, "").replace(/^0+/, "");
     const tenDigitPhone = typedDigits.length >= 10 ? typedDigits.slice(-10) : typedDigits;
-
     if (partyId) {
       customer = await Party.findOne({ _id: partyId, userId: req.user._id });
-      // If customer phone is empty or merchant typed an updated phone, save it
       if (customer && tenDigitPhone && (!customer.phone || customer.phone !== tenDigitPhone)) {
         customer.phone = tenDigitPhone;
         customer.whatsappNumber = tenDigitPhone;
         await customer.save();
       }
     } else if (tenDigitPhone && tenDigitPhone.length === 10) {
-      // Find customer by 10 digits or 91-prefixed digits
       customer = await Party.findOne({
         userId: req.user._id,
         $or: [
@@ -379,9 +334,9 @@ router.post("/", async (req, res) => {
         await customer.save();
       }
     }
-
     if (customer) {
-      isRegularCustomer = customer.isRegular || (customer.visitCount >= 3);
+      const vipThreshold = req.user?.vipVisitThreshold || 3;
+      isRegularCustomer = customer.isRegular || (customer.visitCount >= vipThreshold);
       if (!regularDiscountPercent && isRegularCustomer && applyRegularDiscount) {
         regularDiscountPercent = customer.customDiscountPercent || 0;
       }
@@ -389,22 +344,18 @@ router.post("/", async (req, res) => {
         freebieItem = customer.assignedFreebie || "";
       }
     }
-
     let calculatedSubtotal = 0;
     let calculatedTaxTotal = 0;
     const processedItems = [];
     const stockUpdates = [];
-
     for (const it of items) {
       const price = Number(it.sellingPrice ?? it.price ?? it.rate ?? 0);
       const qty = Number(it.quantity) || 1;
       const taxRate = Number(it.taxRate) || 0;
       const lineTotal = price * qty;
       const lineTax = (lineTotal * taxRate) / 100;
-
       calculatedSubtotal += lineTotal;
       calculatedTaxTotal += lineTax;
-
       processedItems.push({
         itemId: it.itemId || it._id,
         name: it.name,
@@ -416,7 +367,6 @@ router.post("/", async (req, res) => {
         discountPercent: it.discountPercent || 0,
         total: lineTotal + lineTax,
       });
-
       if (it.itemId || it._id) {
         stockUpdates.push({
           updateOne: {
@@ -426,24 +376,19 @@ router.post("/", async (req, res) => {
         });
       }
     }
-
     const totalDiscountRate = regularDiscountPercent + (Number(additionalDiscountPercent) || 0);
     const discountAmount = Math.round((calculatedSubtotal * totalDiscountRate) / 100 * 100) / 100;
     const regularDiscountAmount = Math.round((calculatedSubtotal * regularDiscountPercent) / 100 * 100) / 100;
-
     const totalBeforeRound = calculatedSubtotal + calculatedTaxTotal - discountAmount;
     const grandTotal = Math.round(totalBeforeRound);
     const roundOff = Math.round((grandTotal - totalBeforeRound) * 100) / 100;
-
     const today = new Date();
     const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
     const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
-
     const todayInvoices = await Invoice.find({
       userId: req.user._id,
       createdAt: { $gte: startOfDay, $lte: endOfDay },
     }).select("invoiceNumber");
-
     let maxNumber = 0;
     for (const inv of todayInvoices) {
       const num = parseInt(inv.invoiceNumber, 10);
@@ -452,13 +397,11 @@ router.post("/", async (req, res) => {
       }
     }
     const invoiceNumber = (maxNumber + 1).toString();
-
     const mode = paymentMode.toUpperCase();
     const isCredit = mode === "CREDIT";
     const paidAmount = isCredit ? 0 : grandTotal;
     const dueAmount = isCredit ? grandTotal : 0;
     const paymentStatus = isCredit ? "UNPAID" : "PAID";
-
     let finalCash = 0;
     let finalUpi = 0;
     if (mode === "UPI/CASH") {
@@ -469,8 +412,6 @@ router.post("/", async (req, res) => {
     } else if (mode === "UPI") {
       finalUpi = grandTotal;
     }
-
-    // Priority for WhatsApp delivery: merchant typed phone > customer.whatsappNumber > customer.phone
     let rawDestination = "";
     if (tenDigitPhone && tenDigitPhone.length === 10) {
       rawDestination = tenDigitPhone;
@@ -480,11 +421,7 @@ router.post("/", async (req, res) => {
       rawDestination = partyPhone;
     }
     const destinationPhone = normalizeWhatsAppNumber(rawDestination);
-
-    // Ensure exact current time is recorded for this bill
     const currentTimestamp = new Date();
-
-    // 1. Create Invoice Record First to obtain invoice._id
     const invoice = await Invoice.create({
       userId: req.user._id,
       invoiceNumber,
@@ -511,37 +448,28 @@ router.post("/", async (req, res) => {
       whatsappSent: false,
       notes,
     });
-
     if (stockUpdates.length > 0) {
       await Item.bulkWrite(stockUpdates, { ordered: false });
     }
-
     if (customer) {
       customer.visitCount = (customer.visitCount || 0) + 1;
       customer.totalSpent = (customer.totalSpent || 0) + grandTotal;
       customer.lastVisitDate = new Date();
-
       if (isCredit) {
         customer.balance = (customer.balance || 0) + grandTotal;
       }
-
-      if (!customer.isRegular && (customer.visitCount >= 5 || customer.totalSpent >= 5000)) {
+      const vipThreshold = req.user?.vipVisitThreshold || 3;
+      if (!customer.isRegular && (customer.visitCount >= vipThreshold || customer.totalSpent >= 5000)) {
         customer.isRegular = true;
       }
-
       await customer.save();
     }
-
-    // 2. Build Petpooja / Zudio Style WhatsApp Bill Text with direct Public PDF Link
     const business = req.user;
     const backendBase = process.env.BACKEND_PUBLIC_URL || "https://billingapp-backend-hcan.onrender.com";
     const publicPdfUrl = `${backendBase}/api/invoices/public/${invoice._id}/pdf`;
-
     const itemsSummary = processedItems
       .map((it, idx) => `• ${it.name} x ${it.quantity} = Rs.${it.total}`)
       .join("\n");
-
-    // Format date in exact Petpooja style (DD/MM/YYYY HH:mm, Asia/Kolkata 24-hr)
     const petpoojaDate = new Intl.DateTimeFormat("en-GB", {
       timeZone: "Asia/Kolkata",
       day: "2-digit",
@@ -551,19 +479,14 @@ router.post("/", async (req, res) => {
       minute: "2-digit",
       hour12: false,
     }).format(new Date(invoice.invoiceDate || invoice.createdAt || currentTimestamp)).replace(",", "");
-
     const storeTitle = business.businessName || "THE A POP JAKO BITES";
     const amountVal = Number(grandTotal || 0).toFixed(0);
-
     const storePhoneClean = (business.phone || "7003317615").replace(/[^0-9]/g, "");
     const feedbackStorePhone = storePhoneClean.length === 10 ? `91${storePhoneClean}` : storePhoneClean;
     const invoiceNumStr = String(invoiceNumber || invoice.invoiceNumber || "");
-
     const lovedUrl = `https://wa.me/${feedbackStorePhone}?text=${encodeURIComponent(`Loved it! ⭐️ Fantastic experience with Order #${invoiceNumStr}`)}`;
     const okayUrl = `https://wa.me/${feedbackStorePhone}?text=${encodeURIComponent(`Okay 👍 Order #${invoiceNumStr} was fine`)}`;
     const needsImpUrl = `https://wa.me/${feedbackStorePhone}?text=${encodeURIComponent(`Needs Improvement 👎 Feedback for Order #${invoiceNumStr}`)}`;
-
-    // Exact Petpooja WhatsApp Notification Format with interactive 1-click auto feedback links
     const whatsappText =
       `Dear Customer,\n\n` +
       `Thank you for your recent order at *${storeTitle}*!\n` +
@@ -577,15 +500,12 @@ router.post("/", async (req, res) => {
       `👍 *Okay* ➔ ${okayUrl}\n` +
       `👎 *Needs Improvement* ➔ ${needsImpUrl}\n\n` +
       `_Thank you! Have a wonderful day._ ✨`;
-
-    // 3. Generate High-Res PDF Buffer & Send to WhatsApp
     let pdfBuffer = null;
     try {
       pdfBuffer = await generateInvoicePdfBuffer(invoice, business);
     } catch (pdfErr) {
       console.warn("PDF generation warning:", pdfErr.message);
     }
-
     let autoSent = false;
     if (destinationPhone) {
       autoSent = await sendAutomaticWhatsAppBill(
@@ -600,11 +520,9 @@ router.post("/", async (req, res) => {
         await invoice.save();
       }
     }
-
     const whatsappUrl = destinationPhone
       ? `https://wa.me/${destinationPhone}?text=${encodeURIComponent(whatsappText)}`
       : "";
-
     return res.status(201).json({
       success: true,
       message: "Invoice created successfully",
@@ -623,33 +541,27 @@ router.post("/", async (req, res) => {
     });
   }
 });
-
 router.post("/:id/send-whatsapp", async (req, res) => {
   try {
     const invoice = await Invoice.findOne({ _id: req.params.id, userId: req.user._id });
     if (!invoice) {
       return res.status(404).json({ success: false, message: "Invoice not found" });
     }
-
     const targetPhone = normalizeWhatsAppNumber(
       req.body.phone || invoice.partyPhone || ""
     );
-
     if (!targetPhone || targetPhone.length < 10) {
       return res.status(400).json({
         success: false,
         message: "Customer phone number is required to send WhatsApp bill",
       });
     }
-
     const business = req.user;
     const backendBase = process.env.BACKEND_PUBLIC_URL || "https://billingapp-backend-hcan.onrender.com";
     const publicPdfUrl = `${backendBase}/api/invoices/public/${invoice._id}/pdf`;
-
     const itemsSummary = (invoice.items || [])
       .map((it) => `• ${it.name} x ${it.quantity} = Rs.${it.total}`)
       .join("\n");
-
     const petpoojaDate = new Intl.DateTimeFormat("en-GB", {
       timeZone: "Asia/Kolkata",
       day: "2-digit",
@@ -659,18 +571,14 @@ router.post("/:id/send-whatsapp", async (req, res) => {
       minute: "2-digit",
       hour12: false,
     }).format(new Date(invoice.createdAt || invoice.invoiceDate || new Date())).replace(",", "");
-
     const storeTitle = business.businessName || "THE A POP JAKO BITES";
     const amountVal = Number(invoice.grandTotal || 0).toFixed(0);
-
     const storePhoneClean = (business.phone || "7003317615").replace(/[^0-9]/g, "");
     const feedbackStorePhone = storePhoneClean.length === 10 ? `91${storePhoneClean}` : storePhoneClean;
     const invoiceNumStr = String(invoice.invoiceNumber || "");
-
     const lovedUrl = `https://wa.me/${feedbackStorePhone}?text=${encodeURIComponent(`Loved it! ⭐️ Fantastic experience with Order #${invoiceNumStr}`)}`;
     const okayUrl = `https://wa.me/${feedbackStorePhone}?text=${encodeURIComponent(`Okay 👍 Order #${invoiceNumStr} was fine`)}`;
     const needsImpUrl = `https://wa.me/${feedbackStorePhone}?text=${encodeURIComponent(`Needs Improvement 👎 Feedback for Order #${invoiceNumStr}`)}`;
-
     const whatsappText =
       `Dear Customer,\n\n` +
       `Thank you for your recent order at *${storeTitle}*!\n` +
@@ -684,14 +592,12 @@ router.post("/:id/send-whatsapp", async (req, res) => {
       `👍 *Okay* ➔ ${okayUrl}\n` +
       `👎 *Needs Improvement* ➔ ${needsImpUrl}\n\n` +
       `_Thank you! Have a wonderful day._ ✨`;
-
     let pdfBuffer = null;
     try {
       pdfBuffer = await generateInvoicePdfBuffer(invoice, business);
     } catch (e) {
       console.warn("PDF generation warning:", e.message);
     }
-
     const sent = await sendAutomaticWhatsAppBill(
       targetPhone,
       whatsappText,
@@ -699,15 +605,12 @@ router.post("/:id/send-whatsapp", async (req, res) => {
       invoice.invoiceNumber,
       business.businessName || "THE A POP JAKO BITES"
     );
-
     if (sent) {
       invoice.whatsappSent = true;
       if (!invoice.partyPhone) invoice.partyPhone = targetPhone;
       await invoice.save();
     }
-
     const whatsappUrl = `https://wa.me/${targetPhone}?text=${encodeURIComponent(whatsappText)}`;
-
     return res.status(200).json({
       success: true,
       whatsappSent: sent,
@@ -721,7 +624,6 @@ router.post("/:id/send-whatsapp", async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 });
-
 router.get("/:id/pdf", async (req, res) => {
   try {
     const invoice = await Invoice.findOne({ _id: req.params.id, userId: req.user._id });
@@ -736,5 +638,4 @@ router.get("/:id/pdf", async (req, res) => {
     return res.status(500).json({ success: false, message: "Failed to generate PDF", error: error.message });
   }
 });
-
 export default router;

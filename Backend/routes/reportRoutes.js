@@ -12,9 +12,6 @@ import {
 const router = express.Router();
 router.use(protect);
 
-/**
- * Helper to parse date filters.
- */
 function getDateRange(query) {
   let { startDate, endDate, period } = query;
   const now = new Date();
@@ -43,10 +40,6 @@ function getDateRange(query) {
 
   return { startDate, endDate };
 }
-
-// ==========================================
-// 1. SALES REPORTS (JSON, PDF, CSV)
-// ==========================================
 
 async function fetchSalesData(userId, query) {
   const { startDate, endDate } = getDateRange(query);
@@ -148,10 +141,6 @@ router.get("/sales/csv", async (req, res) => {
   }
 });
 
-// ==========================================
-// 2. INVENTORY REPORTS (PDF, CSV)
-// ==========================================
-
 router.get("/inventory/pdf", async (req, res) => {
   try {
     const items = await Item.find({ userId: req.user._id }).sort({ name: 1 }).lean();
@@ -190,10 +179,6 @@ router.get("/inventory/csv", async (req, res) => {
     return res.status(500).json({ success: false, message: err.message });
   }
 });
-
-// ==========================================
-// 3. PARTY / CUSTOMER REPORTS (PDF, CSV)
-// ==========================================
 
 router.get("/parties/pdf", async (req, res) => {
   try {

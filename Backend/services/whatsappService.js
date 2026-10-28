@@ -10,11 +10,11 @@ import QRCode from "qrcode";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
+import WhatsAppSession from "../models/WhatsAppSession.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Session stored in persistent backend directory; shared across all users and accounts
 const SESSION_DIR = process.env.VERCEL
   ? path.join("/tmp", "whatsapp_session")
   : path.join(__dirname, "../whatsapp_session");
@@ -26,6 +26,7 @@ let connectedNumber = null;
 let isInitializing = false;
 let reconnectAttempts = 0;
 let keepAliveInterval = null;
+let selfPingStarted = false;
 
 const MAX_RECONNECT_DELAY = 15000;
 
@@ -35,19 +36,61 @@ function getReconnectDelay() {
   return delay;
 }
 
+async function restoreSessionFromMongo() {
+  try {
+    if (!fs.existsSync(SESSION_DIR)) {
+      fs.mkdirSync(SESSION_DIR, { recursive: true });
+    }
+    const records = await WhatsAppSession.find({}).lean();
+    if (records && records.length > 0) {
+      for (const rec of records) {
+        if (rec.key && rec.data) {
+          const filePath = path.join(SESSION_DIR, rec.key);
+          fs.writeFileSync(filePath, JSON.stringify(rec.data), "utf-8");
+        }
+      }
+      console.log(`[WhatsApp] Restored ${records.length} session auth keys from MongoDB.`);
+    }
+  } catch (e) {
+    console.warn("[WhatsApp] Session restore note:", e.message);
+  }
+}
+
+async function syncSessionToMongo() {
+  try {
+    if (!fs.existsSync(SESSION_DIR)) return;
+    const files = fs.readdirSync(SESSION_DIR);
+    for (const file of files) {
+      if (file.endsWith(".json")) {
+        const filePath = path.join(SESSION_DIR, file);
+        try {
+          const raw = fs.readFileSync(filePath, "utf-8");
+          const data = JSON.parse(raw);
+          await WhatsAppSession.findOneAndUpdate(
+            { key: file },
+            { key: file, data, updatedAt: new Date() },
+            { upsert: true, new: true }
+          );
+        } catch {}
+      }
+    }
+  } catch (e) {
+    console.warn("[WhatsApp] Session sync note:", e.message);
+  }
+}
+
 function startKeepAlive() {
   if (keepAliveInterval) return;
-  // Subtle socket ping every 60s to ensure socket stays alive without spamming presence
   keepAliveInterval = setInterval(async () => {
     if (sock && connectionStatus === "connected") {
       try {
         if (sock.ws && sock.ws.readyState === 1) {
-          // Native ping
           sock.ws.ping();
         }
+        await sock.sendPresenceUpdate("available");
       } catch {}
     }
-  }, 60000);
+  }, 25000);
 }
 
 function stopKeepAlive() {
@@ -55,6 +98,17 @@ function stopKeepAlive() {
     clearInterval(keepAliveInterval);
     keepAliveInterval = null;
   }
+}
+
+function startServerSelfPing() {
+  if (selfPingStarted) return;
+  selfPingStarted = true;
+  const backendUrl = process.env.BACKEND_PUBLIC_URL || "https://billingapp-backend-hcan.onrender.com";
+  setInterval(async () => {
+    try {
+      await fetch(`${backendUrl}/api/whatsapp/status`);
+    } catch {}
+  }, 9 * 60 * 1000);
 }
 
 function safelyCloseSocket() {
@@ -74,7 +128,7 @@ export const getWhatsAppStatus = () => ({
   status: connectionStatus,
   qrCode: qrCodeData,
   phoneNumber: connectedNumber,
-  isShared: true, // Shared across all accounts
+  isShared: true,
   sessionPersisted: fs.existsSync(path.join(SESSION_DIR, "creds.json")),
 });
 
@@ -93,27 +147,27 @@ export const waitForWhatsAppQrOrReady = async (timeoutMs = 7000) => {
 };
 
 export const initWhatsApp = async (forceRestart = false) => {
-  // If already connected, do not reinitialize
   if (connectionStatus === "connected") {
     return;
   }
 
-  // If already initializing, wait
   if (isInitializing) {
     return;
   }
 
-  // If already waiting for QR scan and we have a valid QR code, don't recreate socket
   if (!forceRestart && connectionStatus === "scan_qr" && qrCodeData && sock) {
     return;
   }
 
   isInitializing = true;
+  startServerSelfPing();
 
   try {
     if (forceRestart) {
       safelyCloseSocket();
     }
+
+    await restoreSessionFromMongo();
 
     if (!fs.existsSync(SESSION_DIR)) {
       fs.mkdirSync(SESSION_DIR, { recursive: true });
@@ -125,13 +179,10 @@ export const initWhatsApp = async (forceRestart = false) => {
     try {
       const v = await fetchLatestWaWebVersion();
       if (v?.version) waVersion = v.version;
-    } catch {
-      // Fallback
-    }
+    } catch {}
 
-    const logger = pino({ level: "error" });
+    const logger = pino({ level: "silent" });
 
-    // Use Chrome web browser profile (required by WhatsApp for pairing code acceptance)
     sock = makeWASocket({
       version: waVersion,
       auth: {
@@ -142,24 +193,24 @@ export const initWhatsApp = async (forceRestart = false) => {
       logger,
       browser: Browsers.ubuntu("Chrome"),
       syncFullHistory: false,
-      markOnlineOnConnect: false,
-      connectTimeoutMs: 60000,
-      keepAliveIntervalMs: 30000,
-      defaultQueryTimeoutMs: 60000,
+      markOnlineOnConnect: true,
+      connectTimeoutMs: 90000,
+      keepAliveIntervalMs: 25000,
+      defaultQueryTimeoutMs: 90000,
       emitOwnEvents: false,
-      retryRequestDelayMs: 250,
+      retryRequestDelayMs: 500,
       maxMsgRetryCount: 5,
     });
 
     sock.ev.on("creds.update", async () => {
       try {
         await saveCreds();
+        await syncSessionToMongo();
       } catch (err) {
         console.error("[WhatsApp] Failed to save creds:", err.message);
       }
     });
 
-    // Automatic reply handler for customer feedback (Loved it! / Needs Improvement / Okay)
     sock.ev.on("messages.upsert", async ({ messages }) => {
       try {
         if (!messages || !messages.length) return;
@@ -181,21 +232,17 @@ export const initWhatsApp = async (forceRestart = false) => {
             await sock.sendMessage(remoteJid, {
               text: `Thank you so much for your wonderful feedback! 🎉 We are delighted to hear that you loved your order! We look forward to serving you again soon. ✨`,
             });
-            console.log(`[WhatsApp] Auto-reply sent to ${remoteJid} for positive feedback`);
           } else if (lower.includes("needs improvement")) {
             await sock.sendMessage(remoteJid, {
               text: `Thank you for sharing your feedback with us. 🙏 We sincerely apologize for falling short of your expectations today! Our management has been notified and we will make sure your next visit is exceptional.`,
             });
-            console.log(`[WhatsApp] Auto-reply sent to ${remoteJid} for improvement feedback`);
           } else if (lower.includes("okay")) {
             await sock.sendMessage(remoteJid, {
               text: `Thank you for your feedback! 👍 We appreciate your visit and are always striving to make your experience even better. Have a wonderful day! 🌟`,
             });
           }
         }
-      } catch (upsertErr) {
-        console.warn("[WhatsApp] messages.upsert handler notice:", upsertErr.message);
-      }
+      } catch {}
     });
 
     sock.ev.on("connection.update", async (update) => {
@@ -218,39 +265,31 @@ export const initWhatsApp = async (forceRestart = false) => {
         connectedNumber = sock.user?.id ? sock.user.id.split(":")[0].replace(/[^0-9]/g, "") : null;
         isInitializing = false;
         startKeepAlive();
-        console.log(`[WhatsApp] Successfully connected (Shared Account): +${connectedNumber}`);
+        await syncSessionToMongo();
+        console.log(`[WhatsApp] Successfully connected: +${connectedNumber}`);
       }
 
       if (connection === "close") {
         stopKeepAlive();
         const statusCode = lastDisconnect?.error?.output?.statusCode;
-        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-
         connectionStatus = "disconnected";
         connectedNumber = null;
         isInitializing = false;
 
         if (statusCode === DisconnectReason.loggedOut) {
-          console.warn("[WhatsApp] Device unlinked by user from WhatsApp. Clearing session...");
-          try {
-            fs.rmSync(SESSION_DIR, { recursive: true, force: true });
-          } catch {}
-          reconnectAttempts = 0;
-          setTimeout(() => initWhatsApp(true), 2000);
+          console.warn("[WhatsApp] Logged out code received, checking session integrity...");
+          const delay = getReconnectDelay();
+          setTimeout(() => initWhatsApp(false), delay);
         } else if (statusCode === DisconnectReason.restartRequired) {
-          console.log("[WhatsApp] Restart required. Reconnecting immediately...");
           reconnectAttempts = 0;
           initWhatsApp(false);
         } else {
-          // Automatic resilient reconnect on network drops / socket timeouts
           const delay = getReconnectDelay();
-          console.log(`[WhatsApp] Connection dropped (code: ${statusCode || "unknown"}). Auto-reconnecting in ${Math.round(delay / 1000)}s...`);
           setTimeout(() => initWhatsApp(false), delay);
         }
       }
     });
   } catch (err) {
-    console.error("[WhatsApp] Init error:", err.message);
     connectionStatus = "disconnected";
     isInitializing = false;
     const delay = getReconnectDelay();
@@ -261,7 +300,7 @@ export const initWhatsApp = async (forceRestart = false) => {
 export function normalizeWhatsAppNumber(phone) {
   if (!phone) return "";
   let digits = phone.toString().replace(/[^0-9]/g, "");
-  digits = digits.replace(/^0+/, ""); // strip leading zeros
+  digits = digits.replace(/^0+/, "");
   if (digits.startsWith("91") && digits.length === 12) {
     return digits;
   }
@@ -277,19 +316,20 @@ export const requestPairingCodeForNumber = async (phoneNumber) => {
     throw new Error("Invalid phone number. Please enter a valid 10-digit mobile number.");
   }
 
-  // If already connected, disconnect first
   if (connectionStatus === "connected") {
     await disconnectWhatsApp();
     await new Promise((r) => setTimeout(r, 600));
   }
 
-  // Clear stale session files to ensure registration keys are fresh
   stopKeepAlive();
   safelyCloseSocket();
   try {
     if (fs.existsSync(SESSION_DIR)) {
       fs.rmSync(SESSION_DIR, { recursive: true, force: true });
     }
+  } catch {}
+  try {
+    await WhatsAppSession.deleteMany({});
   } catch {}
   qrCodeData = null;
   connectionStatus = "disconnected";
@@ -298,7 +338,6 @@ export const requestPairingCodeForNumber = async (phoneNumber) => {
 
   await initWhatsApp(true);
 
-  // Wait until socket connection has completed handshake and is ready for pairing code
   let waitedMs = 0;
   while ((!sock || (connectionStatus !== "scan_qr" && !qrCodeData)) && waitedMs < 16000) {
     await new Promise((r) => setTimeout(r, 350));
@@ -309,7 +348,6 @@ export const requestPairingCodeForNumber = async (phoneNumber) => {
     throw new Error("WhatsApp connection timeout. Please try again or use QR code scan.");
   }
 
-  // Stabilization delay to ensure WebSocket handshake is fully open
   await new Promise((r) => setTimeout(r, 800));
 
   console.log(`[WhatsApp] Requesting fresh pairing code for +${fullNumber}...`);
@@ -333,12 +371,14 @@ export const disconnectWhatsApp = async () => {
   try {
     fs.rmSync(SESSION_DIR, { recursive: true, force: true });
   } catch {}
+  try {
+    await WhatsAppSession.deleteMany({});
+  } catch {}
   qrCodeData = null;
   connectionStatus = "disconnected";
   connectedNumber = null;
   isInitializing = false;
   reconnectAttempts = 0;
-  // Start fresh QR generation after 1s
   setTimeout(() => initWhatsApp(true), 1000);
   return { success: true };
 };
@@ -410,5 +450,3 @@ export const sendWhatsAppDocument = async (recipientPhone, documentBuffer, fileN
     return { success: false, message: error.message };
   }
 };
-
-

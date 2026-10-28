@@ -1,7 +1,6 @@
 import React from "react";
 import { View, Text, TouchableOpacity, Modal, ScrollView, Image } from "react-native";
 import { MaterialIcons, Ionicons, FontAwesome5 } from "@expo/vector-icons";
-
 export default function SideDrawerModal({
   visible,
   onClose,
@@ -15,9 +14,9 @@ export default function SideDrawerModal({
     { id: "sales", label: "3. Sale List", icon: "receipt" },
     { id: "party", label: "4. Party", icon: "people" },
     { id: "inventory", label: "5. Inventory", icon: "inventory" },
-    { id: "setting", label: "6. Settings", icon: "settings" },
+    { id: "marketing", label: "6. Marketing", icon: "campaign" },
+    { id: "setting", label: "7. Settings", icon: "settings" },
   ];
-
   return (
     <Modal
       visible={visible}
@@ -50,8 +49,7 @@ export default function SideDrawerModal({
               </Text>
             ) : null}
           </View>
-
-          <ScrollView className="flex-1 py-4 px-3">
+          <ScrollView className="flex-1 py-4 px-3" showsVerticalScrollIndicator={false}>
             {menuItems.map((item) => (
               <TouchableOpacity
                 key={item.id}
@@ -73,9 +71,7 @@ export default function SideDrawerModal({
                 </Text>
               </TouchableOpacity>
             ))}
-
             <View className="h-px bg-gray-200 my-4 mx-2" />
-
             <TouchableOpacity
               onPress={() => {
                 onClose();
@@ -90,7 +86,6 @@ export default function SideDrawerModal({
             </TouchableOpacity>
           </ScrollView>
         </View>
-
         <TouchableOpacity
           className="flex-1"
           activeOpacity={1}

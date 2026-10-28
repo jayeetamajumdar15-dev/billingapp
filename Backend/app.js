@@ -2,6 +2,8 @@ import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import path from "path";
+import fs from "fs";
 
 dotenv.config();
 
@@ -16,12 +18,10 @@ import whatsappRoutes from "./routes/whatsappRoutes.js";
 import reportRoutes from "./routes/reportRoutes.js";
 import { initWhatsApp } from "./services/whatsappService.js";
 
-// Attempt initial connection in background
 connectDB().catch((err) =>
   console.warn("Initial DB connection attempt notice:", err.message)
 );
 
-// Auto-init WhatsApp on startup to keep session alive (on persistent servers)
 if (!process.env.VERCEL) {
   initWhatsApp().catch((err) =>
     console.warn("WhatsApp initialization notice:", err.message)
@@ -66,14 +66,30 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+app.get("/api/download-apk", (req, res) => {
+  const candidates = [
+    path.resolve(process.cwd(), "../Frontend/BillingApp-release.apk"),
+    path.resolve(process.cwd(), "../Frontend/android/app/build/outputs/apk/release/app-release.apk"),
+    path.resolve(process.cwd(), "BillingApp-release.apk"),
+  ];
+  const target = candidates.find((p) => fs.existsSync(p));
+  if (target) {
+    res.setHeader("Content-Disposition", "attachment; filename=BillingApp-release.apk");
+    res.setHeader("Content-Type", "application/vnd.android.package-archive");
+    return res.sendFile(target);
+  }
+  return res.status(404).json({ success: false, message: "APK not found on server." });
+});
+
 app.get("/api/app-version", (req, res) => {
+  const host = req.get("host") || "localhost:5000";
+  const protocol = req.protocol || "http";
+  const fallbackApkUrl = `${protocol}://${host}/api/download-apk`;
   res.status(200).json({
     success: true,
     latestVersion: process.env.APP_LATEST_VERSION || "1.0.0",
     minSupportedVersion: process.env.APP_MIN_VERSION || "1.0.0",
-    apkUrl:
-      process.env.APP_APK_URL ||
-      "https://github.com/Tanmoy200405/billingapp/releases/latest",
+    apkUrl: process.env.APP_APK_URL || fallbackApkUrl,
     releaseNotes:
       process.env.APP_RELEASE_NOTES ||
       "Updated with latest improvements, faster billing, and fixes.",
@@ -82,7 +98,6 @@ app.get("/api/app-version", (req, res) => {
   });
 });
 
-// Database connection middleware for all API data routes
 app.use(async (req, res, next) => {
   try {
     await connectDB();

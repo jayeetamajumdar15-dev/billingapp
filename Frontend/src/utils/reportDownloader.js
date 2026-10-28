@@ -1,16 +1,20 @@
 import { Platform, Linking, Alert } from "react-native";
-import { getAuthToken } from "../config/api";
+import { getAuthToken, loadStoredToken } from "../config/api";
 
-/**
- * Downloads and opens/shares a report file (PDF or CSV).
- * Works on Web, Android, and iOS.
- */
 export async function downloadReportFile(url, fileName = "Report.pdf", mimeType = "application/pdf") {
-  const token = getAuthToken();
+  let token = getAuthToken();
+  if (!token) {
+    try {
+      token = await loadStoredToken();
+    } catch {}
+  }
+
+  const separator = url.includes("?") ? "&" : "?";
+  const authUrl = token ? `${url}${separator}token=${encodeURIComponent(token)}` : url;
 
   if (Platform.OS === "web") {
     try {
-      const response = await fetch(url, {
+      const response = await fetch(authUrl, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!response.ok) {
@@ -28,20 +32,24 @@ export async function downloadReportFile(url, fileName = "Report.pdf", mimeType 
       return { success: true };
     } catch (err) {
       console.warn("Web report download error, trying direct link:", err.message);
-      Linking.openURL(url);
+      try {
+        if (typeof window !== "undefined" && window.open) {
+          window.open(authUrl, "_blank");
+        } else {
+          Linking.openURL(authUrl);
+        }
+      } catch {}
       return { success: true };
     }
   }
 
-  // Native (Android / iOS)
   try {
     const FileSystem = await import("expo-file-system");
     const Sharing = await import("expo-sharing");
 
     const targetUri = `${FileSystem.documentDirectory}${fileName}`;
-    console.log(`[Reports] Downloading ${fileName} from ${url}...`);
 
-    const downloadResult = await FileSystem.downloadAsync(url, targetUri, {
+    const downloadResult = await FileSystem.downloadAsync(authUrl, targetUri, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
 
@@ -63,9 +71,8 @@ export async function downloadReportFile(url, fileName = "Report.pdf", mimeType 
     return { success: true, uri: downloadResult.uri };
   } catch (err) {
     console.error("Native report download error:", err.message);
-    // Fallback: try opening the URL directly
     try {
-      await Linking.openURL(url);
+      await Linking.openURL(authUrl);
       return { success: true };
     } catch (linkErr) {
       return { success: false, error: err.message };

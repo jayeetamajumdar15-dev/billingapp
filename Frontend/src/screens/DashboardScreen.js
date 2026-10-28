@@ -20,7 +20,6 @@ import {
 import { api } from "../config/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { shareBackendPdf, printTestSlip } from "../utils/receiptPdfGenerator";
-
 export default function DashboardScreen({
   user,
   onOpenDrawer,
@@ -34,19 +33,16 @@ export default function DashboardScreen({
   const [showBtGuide, setShowBtGuide] = useState(false);
   const [testingPrinter, setTestingPrinter] = useState(false);
   const [printerPaperSize, setPrinterPaperSize] = useState("2inch");
-
   const fetchDashboardData = async () => {
     setLoading(true);
     const res = await api.dashboard.getStats();
     setLoading(false);
     setRefreshing(false);
-
     if (res.success) {
       setStats(res.stats);
       setRecentTransactions(res.recentTransactions || []);
     }
   };
-
   useEffect(() => {
     fetchDashboardData();
     AsyncStorage.getItem("billFormatOptions").then((res) => {
@@ -58,12 +54,10 @@ export default function DashboardScreen({
       }
     });
   }, []);
-
   const onRefresh = () => {
     setRefreshing(true);
     fetchDashboardData();
   };
-
   const handleTestSlip = async () => {
     setTestingPrinter(true);
     try {
@@ -81,14 +75,12 @@ export default function DashboardScreen({
       setTestingPrinter(false);
     }
   };
-
   return (
     <View style={{ flex: 1 }} className="flex-1 bg-gray-100">
       <View className="bg-blue-600 px-4 pt-10 pb-4 flex-row items-center justify-between shadow-md">
         <TouchableOpacity onPress={onOpenDrawer} className="p-1">
           <Ionicons name="menu" size={26} color="#FFFFFF" />
         </TouchableOpacity>
-
         <View className="flex-row items-center">
           {user?.logo ? (
             <Image
@@ -100,22 +92,18 @@ export default function DashboardScreen({
             {user?.businessName || "COMPANY NAME"}
           </Text>
         </View>
-
         <View className="flex-row items-center gap-1">
-          {/* Quick Bluetooth Connect Button in Top Bar */}
           <TouchableOpacity
             onPress={() => setShowBtGuide(true)}
             className="bg-blue-700 p-1.5 rounded-full mr-1 items-center justify-center border border-blue-400"
           >
             <Ionicons name="bluetooth" size={19} color="#FFFFFF" />
           </TouchableOpacity>
-
           <TouchableOpacity onPress={onRefresh} className="p-1">
             <Ionicons name="sync" size={22} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
       </View>
-
       <ScrollView
         className="flex-1"
         contentContainerStyle={{ padding: 12, paddingBottom: 100 }}
@@ -123,7 +111,6 @@ export default function DashboardScreen({
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        {/* ─── BLUETOOTH THERMAL PRINTER QUICK-CONNECT CARD ─── */}
         <View className="bg-white rounded-2xl p-3.5 mb-3.5 border border-blue-300 shadow-xs flex-row items-center justify-between">
           <View className="flex-row items-center flex-1 mr-2">
             <View className="w-10 h-10 rounded-xl bg-blue-600 items-center justify-center mr-3 shadow-xs">
@@ -144,7 +131,6 @@ export default function DashboardScreen({
               </Text>
             </View>
           </View>
-
           <View className="flex-row items-center gap-1.5">
             <TouchableOpacity
               onPress={handleTestSlip}
@@ -160,7 +146,6 @@ export default function DashboardScreen({
                 </>
               )}
             </TouchableOpacity>
-
             <TouchableOpacity
               onPress={() => setShowBtGuide(true)}
               className="bg-blue-600 px-3 py-1.5 rounded-xl flex-row items-center shadow-xs"
@@ -170,38 +155,6 @@ export default function DashboardScreen({
             </TouchableOpacity>
           </View>
         </View>
-
-        {/* ─── FESTIVE & SPECIAL OCCASION OFFERS QUICK ACTION ─── */}
-        <TouchableOpacity
-          onPress={() => (onNavigateTab ? onNavigateTab("party") : null)}
-          activeOpacity={0.85}
-          className="bg-amber-500 rounded-2xl p-3 mb-3.5 border border-amber-300 shadow-xs flex-row items-center justify-between"
-        >
-          <View className="flex-row items-center flex-1 mr-2">
-            <View className="w-10 h-10 rounded-xl bg-amber-600/40 items-center justify-center mr-3">
-              <Text className="text-xl">🪔</Text>
-            </View>
-            <View className="flex-1">
-              <View className="flex-row items-center">
-                <Text className="text-xs font-black text-white uppercase tracking-wider">
-                  Puja & Special Offers
-                </Text>
-                <View className="ml-2 bg-amber-700/60 px-1.5 py-0.2 rounded-full">
-                  <Text className="text-[9px] font-bold text-amber-100">BROADCAST</Text>
-                </View>
-              </View>
-              <Text className="text-[11px] text-amber-100 font-medium mt-0.5">
-                Send festive & customized discounts to all customers
-              </Text>
-            </View>
-          </View>
-          <View className="bg-white px-2.5 py-1.5 rounded-xl flex-row items-center shadow-xs">
-            <Ionicons name="megaphone-outline" size={13} color="#B45309" />
-            <Text className="text-amber-800 text-[11px] font-bold ml-1">Send Deals ➔</Text>
-          </View>
-        </TouchableOpacity>
-
-        {/* Reports Banner matching Screen-1 */}
         <TouchableOpacity
           onPress={() => (onNavigateTab ? onNavigateTab("reports") : onRefresh())}
           activeOpacity={0.85}
@@ -218,7 +171,6 @@ export default function DashboardScreen({
               <Ionicons name="chevron-forward" size={14} color="#2563EB" />
             </View>
           </View>
-
           <View className="flex-row justify-between items-center">
             <View>
               <Text className="text-xs text-gray-500">Today Sales</Text>
@@ -233,7 +185,6 @@ export default function DashboardScreen({
               </Text>
             </View>
           </View>
-
           <View className="flex-row gap-2 mt-3 pt-3 border-t border-gray-100">
             <View className="flex-1 bg-blue-50/70 p-2 rounded-lg">
               <Text className="text-[10px] text-gray-500">Regular Customers</Text>
@@ -255,8 +206,6 @@ export default function DashboardScreen({
             </View>
           </View>
         </TouchableOpacity>
-
-        {/* Recent Sale Transactions matching Screen-1 */}
         <View className="flex-row items-center justify-between mb-2 px-1">
           <Text className="text-xs font-extrabold text-gray-700 uppercase tracking-widest">
             Recent Sale Transactions
@@ -265,7 +214,6 @@ export default function DashboardScreen({
             {recentTransactions.length} recorded
           </Text>
         </View>
-
         {loading && !refreshing ? (
           <View className="py-12 items-center">
             <ActivityIndicator size="small" color="#2563EB" />
@@ -306,7 +254,6 @@ export default function DashboardScreen({
                 <Text className="text-[11px] text-gray-400 mt-0.5">
                   {tx.invoiceNumber} • {new Date(tx.invoiceDate).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                 </Text>
-
                 <View className="flex-row items-center gap-1.5 mt-2">
                   <View
                     className={`px-2 py-0.5 rounded border ${
@@ -335,7 +282,6 @@ export default function DashboardScreen({
                   </View>
                 </View>
               </View>
-
               <View className="items-end">
                 <Text className="text-base font-extrabold text-gray-900 mb-1">
                   Rs. {tx.grandTotal}
@@ -354,8 +300,6 @@ export default function DashboardScreen({
           ))
         )}
       </ScrollView>
-
-      {/* Floating Action Button: + Sale Invoice */}
       <View
         pointerEvents="box-none"
         style={{ position: "absolute", bottom: 16, left: 0, right: 0, alignItems: "center", zIndex: 50, elevation: 8 }}
@@ -371,8 +315,6 @@ export default function DashboardScreen({
           </Text>
         </TouchableOpacity>
       </View>
-
-      {/* Bluetooth Connection Guide Modal */}
       <Modal visible={showBtGuide} animationType="slide" transparent={true}>
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" }}>
           <View style={{ backgroundColor: "#FFFFFF", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20 }}>
@@ -389,7 +331,6 @@ export default function DashboardScreen({
                 <Ionicons name="close" size={24} color="#6B7280" />
               </TouchableOpacity>
             </View>
-
             <View className="bg-blue-50 border border-blue-200 rounded-xl p-3.5 mb-3">
               <Text className="text-xs font-bold text-blue-900 mb-1">
                 How to Connect VEER B41 Thermal Printer:
@@ -400,7 +341,6 @@ export default function DashboardScreen({
                 3. Because VEER B41 uses Bluetooth (not Wi-Fi), install the free <Text className="font-bold">RawBT Driver</Text> below to stop "Searching for printers" and print in 1 tap!
               </Text>
             </View>
-
             <TouchableOpacity
               onPress={() => Linking.openURL("https://play.google.com/store/apps/details?id=ru.a402d.rawbtprinter")}
               className="bg-emerald-600 py-2.5 rounded-xl flex-row items-center justify-center mb-3 shadow-xs"
@@ -410,7 +350,6 @@ export default function DashboardScreen({
                 Install VEER B41 Driver (RawBT on Play Store)
               </Text>
             </TouchableOpacity>
-
             <View className="flex-row gap-2">
               <TouchableOpacity
                 onPress={handleTestSlip}
@@ -428,7 +367,6 @@ export default function DashboardScreen({
                   </>
                 )}
               </TouchableOpacity>
-
               <TouchableOpacity
                 onPress={() => {
                   setShowBtGuide(false);
@@ -442,7 +380,6 @@ export default function DashboardScreen({
                 </Text>
               </TouchableOpacity>
             </View>
-
             <TouchableOpacity
               onPress={() => setShowBtGuide(false)}
               className="mt-3 py-2 items-center"

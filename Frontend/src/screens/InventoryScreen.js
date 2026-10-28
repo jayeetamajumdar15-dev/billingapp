@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -10,10 +10,35 @@ import {
   ActivityIndicator,
   ScrollView,
   Image,
+  RefreshControl,
+  Platform,
 } from "react-native";
 import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system";
 import { api } from "../config/api";
+import { downloadReportFile } from "../utils/reportDownloader";
+
+function SafeProductImage({ uri }) {
+  const [hasError, setHasError] = useState(false);
+
+  if (!uri || hasError) {
+    return (
+      <View className="w-12 h-12 rounded-xl bg-blue-50 border border-blue-200 items-center justify-center mr-3">
+        <FontAwesome5 name="box-open" size={20} color="#2563EB" />
+      </View>
+    );
+  }
+
+  return (
+    <Image
+      source={{ uri }}
+      onError={() => setHasError(true)}
+      style={{ width: 48, height: 48, borderRadius: 10, marginRight: 12 }}
+    />
+  );
+}
 
 export default function InventoryScreen({ onOpenDrawer, onBack }) {
   const [items, setItems] = useState([]);
@@ -22,6 +47,8 @@ export default function InventoryScreen({ onOpenDrawer, onBack }) {
   const [filterLowStock, setFilterLowStock] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
+  const [downloadingReport, setDownloadingReport] = useState(false);
+  const [importingPdf, setImportingPdf] = useState(false);
 
   const [formName, setFormName] = useState("");
   const [formCategory, setFormCategory] = useState("General");
@@ -34,22 +61,125 @@ export default function InventoryScreen({ onOpenDrawer, onBack }) {
   const [formUnit, setFormUnit] = useState("PCS");
   const [formImageUrl, setFormImageUrl] = useState("");
 
-  const loadItems = async () => {
-    setLoading(true);
-    let query = search ? `search=${encodeURIComponent(search)}` : "";
-    if (filterLowStock) {
-      query += `${query ? "&" : ""}lowStock=true`;
+  const loadItems = useCallback(async () => {
+    try {
+      setLoading(true);
+      let query = search ? `search=${encodeURIComponent(search)}` : "";
+      if (filterLowStock) {
+        query += `${query ? "&" : ""}lowStock=true`;
+      }
+      const res = await api.items.getAll(query);
+      if (res && res.success && Array.isArray(res.items)) {
+        setItems(res.items);
+      } else {
+        setItems([]);
+      }
+    } catch {
+      setItems([]);
+    } finally {
+      setLoading(false);
     }
-    const res = await api.items.getAll(query);
-    setLoading(false);
-    if (res.success && res.items) {
-      setItems(res.items);
-    }
-  };
+  }, [search, filterLowStock]);
 
   useEffect(() => {
     loadItems();
   }, [filterLowStock]);
+
+  const handleDownloadInventoryPdf = async () => {
+    setDownloadingReport(true);
+    const timestamp = new Date().toISOString().slice(0, 10);
+    const url = api.reports.getInventoryPdfUrl();
+    const fileName = `InventoryReport_${timestamp}.pdf`;
+    try {
+      const res = await downloadReportFile(url, fileName, "application/pdf");
+      if (!res.success && res.error) {
+        Alert.alert("Download Notice", res.error);
+      }
+    } catch (e) {
+      Alert.alert("Download Error", e.message || "Failed to download inventory PDF");
+    } finally {
+      setDownloadingReport(false);
+    }
+  };
+
+  const handleImportPdf = async () => {
+    try {
+      if (Platform.OS === "web" && typeof document !== "undefined") {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = "application/pdf";
+        input.onchange = async (e) => {
+          const file = e.target.files && e.target.files[0];
+          if (!file) return;
+          setImportingPdf(true);
+          try {
+            const reader = new FileReader();
+            reader.onload = async () => {
+              const base64Data = reader.result;
+              const res = await api.items.importPdf({ pdfBase64: base64Data });
+              setImportingPdf(false);
+              if (res && res.success) {
+                Alert.alert(
+                  "PDF Menu Imported!",
+                  `Successfully parsed and added items from PDF.\nAdded: ${res.addedCount || 0}, Updated: ${res.updatedCount || 0}`
+                );
+                loadItems();
+              } else {
+                Alert.alert("Import Notice", res?.message || "Could not extract menu items from this PDF.");
+              }
+            };
+            reader.readAsDataURL(file);
+          } catch (err) {
+            setImportingPdf(false);
+            Alert.alert("Error", err.message || "Failed to read PDF file.");
+          }
+        };
+        input.click();
+        return;
+      }
+
+      setImportingPdf(true);
+      const resDoc = await DocumentPicker.getDocumentAsync({
+        type: ["application/pdf"],
+        copyToCacheDirectory: true,
+      });
+
+      if (resDoc.canceled || !resDoc.assets || !resDoc.assets.length) {
+        setImportingPdf(false);
+        return;
+      }
+
+      const asset = resDoc.assets[0];
+      let base64 = "";
+      if (Platform.OS === "web" && asset.file) {
+        base64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(asset.file);
+        });
+      } else {
+        base64 = await FileSystem.readAsStringAsync(asset.uri, {
+          encoding: "base64",
+        });
+      }
+
+      const res = await api.items.importPdf({ pdfBase64: base64 });
+      setImportingPdf(false);
+      if (res && res.success) {
+        Alert.alert(
+          "PDF Menu Imported!",
+          `Successfully parsed and added items from PDF.\nAdded: ${res.addedCount || 0}, Updated: ${res.updatedCount || 0}`
+        );
+        loadItems();
+      } else {
+        Alert.alert("Import Notice", res?.message || "Could not extract menu items from this PDF.");
+      }
+    } catch (err) {
+      setImportingPdf(false);
+      Alert.alert("Import Error", err.message || "Failed to import items from PDF.");
+    }
+  };
 
   const handlePickImage = async () => {
     try {
@@ -69,7 +199,7 @@ export default function InventoryScreen({ onOpenDrawer, onBack }) {
         setFormImageUrl(imageUri);
       }
     } catch {
-      Alert.alert("Error", "Could not pick image");
+      Alert.alert("Notice", "Could not pick image");
     }
   };
 
@@ -80,6 +210,7 @@ export default function InventoryScreen({ onOpenDrawer, onBack }) {
   };
 
   const handleOpenEdit = (item) => {
+    if (!item) return;
     setEditingItem(item);
     setFormName(item.name || "");
     setFormCategory(item.category || "General");
@@ -120,7 +251,7 @@ export default function InventoryScreen({ onOpenDrawer, onBack }) {
       res = await api.items.create(payload);
     }
 
-    if (res.success) {
+    if (res && res.success) {
       setModalVisible(false);
       resetForm();
       loadItems();
@@ -129,7 +260,7 @@ export default function InventoryScreen({ onOpenDrawer, onBack }) {
         editingItem ? "Item updated successfully" : "Item added to inventory"
       );
     } else {
-      Alert.alert("Error", res.message || "Failed to save item");
+      Alert.alert("Error", res?.message || "Failed to save item");
     }
   };
 
@@ -149,10 +280,10 @@ export default function InventoryScreen({ onOpenDrawer, onBack }) {
 
   return (
     <View style={{ flex: 1 }} className="flex-1 bg-gray-50">
-      <View className="bg-blue-600 px-4 pt-10 pb-4">
-        <View className="flex-row items-center justify-between mb-3">
-          <View className="flex-row items-center">
-            <TouchableOpacity onPress={onOpenDrawer} className="mr-2">
+      <View className="bg-blue-600 px-4 pt-10 pb-3">
+        <View className="flex-row items-center justify-between mb-2.5">
+          <View className="flex-row items-center flex-1 pr-2">
+            <TouchableOpacity onPress={onOpenDrawer} className="mr-2 p-1">
               <Ionicons name="menu" size={24} color="#FFFFFF" />
             </TouchableOpacity>
             {onBack ? (
@@ -165,17 +296,53 @@ export default function InventoryScreen({ onOpenDrawer, onBack }) {
               </TouchableOpacity>
             ) : null}
             <Text className="text-white text-xl font-bold">Inventory</Text>
+            <View className="bg-blue-700/80 px-2 py-0.5 rounded-full ml-2 border border-blue-400/40">
+              <Text className="text-white text-[11px] font-bold">{items.length} items</Text>
+            </View>
           </View>
+        </View>
+
+        <View className="flex-row gap-2 mb-2">
           <TouchableOpacity
             onPress={handleOpenAdd}
-            className="bg-white/20 px-3 py-1.5 rounded-lg flex-row items-center"
+            className="flex-1 bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 py-2.5 px-3 rounded-xl flex-row items-center justify-center shadow-xs"
           >
-            <Ionicons name="add" size={18} color="#FFFFFF" />
-            <Text className="text-white font-bold text-xs ml-1">Add Item</Text>
+            <Ionicons name="add-circle" size={17} color="#FFFFFF" />
+            <Text className="text-white font-extrabold text-xs ml-1.5">+ Add Item</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={handleImportPdf}
+            disabled={importingPdf}
+            className="flex-1 bg-purple-600 hover:bg-purple-700 active:bg-purple-800 py-2.5 px-3 rounded-xl flex-row items-center justify-center shadow-xs"
+          >
+            {importingPdf ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <>
+                <Ionicons name="document-attach" size={16} color="#FFFFFF" />
+                <Text className="text-white font-extrabold text-xs ml-1.5">Add by PDF</Text>
+              </>
+            )}
           </TouchableOpacity>
         </View>
 
-        <View className="flex-row bg-white rounded-xl px-3 py-2 items-center">
+        <TouchableOpacity
+          onPress={handleDownloadInventoryPdf}
+          disabled={downloadingReport}
+          className="w-full bg-white/20 hover:bg-white/30 border border-white/30 py-2 px-3 rounded-xl flex-row items-center justify-center mb-2.5"
+        >
+          {downloadingReport ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <>
+              <Ionicons name="document-text-outline" size={15} color="#FFFFFF" />
+              <Text className="text-white font-bold text-xs ml-1.5">Download Inventory PDF Report</Text>
+            </>
+          )}
+        </TouchableOpacity>
+
+        <View className="flex-row bg-white rounded-xl px-3 py-2 items-center shadow-xs">
           <Ionicons name="search" size={18} color="#9CA3AF" />
           <TextInput
             className="flex-1 ml-2 text-sm text-gray-800"
@@ -230,15 +397,28 @@ export default function InventoryScreen({ onOpenDrawer, onBack }) {
         </TouchableOpacity>
       </View>
 
-      {loading ? (
-        <View className="flex-1 items-center justify-center">
+      {loading && items.length === 0 ? (
+        <View className="flex-1 items-center justify-center py-20">
           <ActivityIndicator size="large" color="#2563EB" />
         </View>
       ) : (
         <FlatList
+          style={{ flex: 1 }}
           data={items}
-          keyExtractor={(item) => item._id}
-          contentContainerStyle={{ padding: 12, paddingBottom: 80 }}
+          keyExtractor={(item, index) => item?._id || `item-${index}`}
+          contentContainerStyle={{ padding: 12, paddingBottom: 120, flexGrow: 1 }}
+          keyboardShouldPersistTaps="handled"
+          nestedScrollEnabled={true}
+          scrollEnabled={true}
+          showsVerticalScrollIndicator={true}
+          refreshControl={
+            <RefreshControl
+              refreshing={loading}
+              onRefresh={loadItems}
+              tintColor="#2563EB"
+              colors={["#2563EB"]}
+            />
+          }
           ListEmptyComponent={
             <View className="items-center justify-center py-16">
               <MaterialCommunityIcons
@@ -249,81 +429,78 @@ export default function InventoryScreen({ onOpenDrawer, onBack }) {
               <Text className="text-gray-500 font-semibold text-sm mt-3">
                 No items in inventory
               </Text>
+              <Text className="text-gray-400 text-xs mt-1">
+                Tap 'Add Item' above to start adding products to your store
+              </Text>
             </View>
           }
-          renderItem={({ item }) => (
-            <View className="bg-white rounded-xl p-4 mb-3 border border-gray-200 shadow-sm flex-row items-center justify-between">
-              <View className="flex-row items-center flex-1 pr-2">
-                {item.imageUrl ? (
-                  <Image
-                    source={{ uri: item.imageUrl }}
-                    style={{ width: 48, height: 48, borderRadius: 10, marginRight: 12 }}
-                  />
-                ) : (
-                  <View className="w-12 h-12 rounded-xl bg-blue-50 border border-blue-200 items-center justify-center mr-3">
-                    <FontAwesome5 name="box-open" size={20} color="#2563EB" />
-                  </View>
-                )}
-                <View className="flex-1">
-                  <Text className="text-base font-extrabold text-gray-900">
-                    {item.name}
-                  </Text>
-                  <View className="flex-row items-center gap-2 mt-0.5">
-                    <Text className="text-xs text-gray-500 font-medium">
-                      {item.category}
+          renderItem={({ item }) => {
+            if (!item) return null;
+            return (
+              <View className="bg-white rounded-xl p-4 mb-3 border border-gray-200 shadow-sm flex-row items-center justify-between">
+                <View className="flex-row items-center flex-1 pr-2">
+                  <SafeProductImage uri={item.imageUrl} />
+                  <View className="flex-1">
+                    <Text className="text-base font-extrabold text-gray-900">
+                      {item.name || "Untitled Item"}
                     </Text>
-                    {item.barcode ? (
-                      <Text className="text-[11px] text-gray-400">
-                        Code: {item.barcode}
+                    <View className="flex-row items-center gap-2 mt-0.5">
+                      <Text className="text-xs text-gray-500 font-medium">
+                        {item.category || "General"}
                       </Text>
-                    ) : null}
-                  </View>
-                  <View className="flex-row items-center gap-3 mt-1.5">
-                    <Text className="text-xs font-bold text-blue-900">
-                      Sale: Rs. {item.sellingPrice}
-                    </Text>
-                    {item.taxRate > 0 ? (
-                      <Text className="text-[11px] text-gray-500">
-                        GST: {item.taxRate}%
+                      {item.barcode ? (
+                        <Text className="text-[11px] text-gray-400">
+                          Code: {item.barcode}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <View className="flex-row items-center gap-3 mt-1.5">
+                      <Text className="text-xs font-bold text-blue-900">
+                        Sale: Rs. {item.sellingPrice || 0}
                       </Text>
-                    ) : null}
+                      {item.taxRate > 0 ? (
+                        <Text className="text-[11px] text-gray-500">
+                          GST: {item.taxRate}%
+                        </Text>
+                      ) : null}
+                    </View>
                   </View>
                 </View>
-              </View>
 
-              <View className="flex-row items-center">
-                <View className="items-end mr-2">
-                  <Text
-                    className={`text-sm font-extrabold ${
-                      item.stock <= (item.lowStockThreshold || 5)
-                        ? "text-red-600"
-                        : "text-emerald-700"
-                    }`}
+                <View className="flex-row items-center">
+                  <View className="items-end mr-2">
+                    <Text
+                      className={`text-sm font-extrabold ${
+                        (item.stock || 0) <= (item.lowStockThreshold || 5)
+                          ? "text-red-600"
+                          : "text-emerald-700"
+                      }`}
+                    >
+                      {item.stock || 0} {item.unit || "PCS"}
+                    </Text>
+                    <Text className="text-[10px] text-gray-400 mt-0.5">
+                      {(item.stock || 0) <= (item.lowStockThreshold || 5)
+                        ? "Low Stock"
+                        : "In Stock"}
+                    </Text>
+                  </View>
+
+                  <TouchableOpacity
+                    onPress={() => handleOpenEdit(item)}
+                    className="bg-blue-50 border border-blue-200 w-9 h-9 rounded-lg items-center justify-center"
                   >
-                    {item.stock} {item.unit}
-                  </Text>
-                  <Text className="text-[10px] text-gray-400 mt-0.5">
-                    {item.stock <= (item.lowStockThreshold || 5)
-                      ? "Low Stock"
-                      : "In Stock"}
-                  </Text>
+                    <Ionicons name="pencil" size={16} color="#2563EB" />
+                  </TouchableOpacity>
                 </View>
-
-                <TouchableOpacity
-                  onPress={() => handleOpenEdit(item)}
-                  className="bg-blue-50 border border-blue-200 w-9 h-9 rounded-lg items-center justify-center"
-                >
-                  <Ionicons name="pencil" size={16} color="#2563EB" />
-                </TouchableOpacity>
               </View>
-            </View>
-          )}
+            );
+          }}
         />
       )}
 
       <Modal visible={modalVisible} animationType="slide" transparent={true}>
-        <View className="flex-1 bg-black/50 justify-end">
-          <View className="bg-white rounded-t-3xl p-6 max-h-[90%]">
+        <View className="flex-1 bg-black/50 justify-end sm:justify-center items-center p-0 sm:p-4">
+          <View className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-6 max-h-[90%] shadow-2xl">
             <View className="flex-row justify-between items-center mb-4">
               <Text className="text-lg font-bold text-gray-900">
                 {editingItem ? "Edit Item" : "Add Item"}
@@ -333,7 +510,7 @@ export default function InventoryScreen({ onOpenDrawer, onBack }) {
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               <View className="items-center mb-4">
                 {formImageUrl ? (
                   <View className="items-center">
@@ -383,7 +560,7 @@ export default function InventoryScreen({ onOpenDrawer, onBack }) {
                   />
                 </View>
                 <View className="flex-1">
-                  <Text className="text-xs font-bold text-gray-700 mb-1">Cost Price (Rs)</Text>
+                  <Text className="text-xs font-bold text-gray-700 mb-1">Purchase / Cost (Rs)</Text>
                   <TextInput
                     className="bg-gray-100 border border-gray-300 rounded-xl px-3 py-2.5 text-sm"
                     placeholder="0.00"
@@ -394,31 +571,21 @@ export default function InventoryScreen({ onOpenDrawer, onBack }) {
                 </View>
               </View>
 
-              <View className="mb-3">
-                <Text className="text-xs font-bold text-gray-700 mb-1">Category</Text>
-                <TextInput
-                  className="bg-gray-100 border border-gray-300 rounded-xl px-4 py-2.5 text-sm"
-                  placeholder="e.g. Grocery, Electronics, Drinks"
-                  value={formCategory}
-                  onChangeText={setFormCategory}
-                />
-              </View>
-
               <View className="flex-row gap-3 mb-3">
                 <View className="flex-1">
-                  <Text className="text-xs font-bold text-gray-700 mb-1">HSN Code</Text>
+                  <Text className="text-xs font-bold text-gray-700 mb-1">Category</Text>
                   <TextInput
                     className="bg-gray-100 border border-gray-300 rounded-xl px-3 py-2.5 text-sm"
-                    placeholder="e.g. 1006"
-                    value={formHsn}
-                    onChangeText={setFormHsn}
+                    placeholder="General, Food, etc"
+                    value={formCategory}
+                    onChangeText={setFormCategory}
                   />
                 </View>
                 <View className="flex-1">
-                  <Text className="text-xs font-bold text-gray-700 mb-1">GST Tax Rate (%)</Text>
+                  <Text className="text-xs font-bold text-gray-700 mb-1">Tax Rate (GST %)</Text>
                   <TextInput
                     className="bg-gray-100 border border-gray-300 rounded-xl px-3 py-2.5 text-sm"
-                    placeholder="0, 5, 12, 18, 28"
+                    placeholder="0"
                     keyboardType="numeric"
                     value={formTaxRate}
                     onChangeText={setFormTaxRate}
@@ -428,7 +595,7 @@ export default function InventoryScreen({ onOpenDrawer, onBack }) {
 
               <View className="flex-row gap-3 mb-4">
                 <View className="flex-1">
-                  <Text className="text-xs font-bold text-gray-700 mb-1">Opening Stock</Text>
+                  <Text className="text-xs font-bold text-gray-700 mb-1">Current Stock</Text>
                   <TextInput
                     className="bg-gray-100 border border-gray-300 rounded-xl px-3 py-2.5 text-sm"
                     placeholder="0"

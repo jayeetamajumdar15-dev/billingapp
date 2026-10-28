@@ -11,15 +11,14 @@ export const DEFAULT_API_URL = RENDER_API_URL;
 let currentBaseUrl = DEFAULT_API_URL;
 const API_URL_KEY = "billing_api_url";
 
-// ALWAYS FORCE RENDER API URL - clears any old Vercel/Cloudflare/localhost cache
 currentBaseUrl = DEFAULT_API_URL;
 if (typeof localStorage !== "undefined") {
   try {
-    localStorage.removeItem(API_URL_KEY); // clear old cached URL
+    localStorage.removeItem(API_URL_KEY);
     localStorage.setItem(API_URL_KEY, DEFAULT_API_URL);
   } catch {}
 }
-AsyncStorage.removeItem(API_URL_KEY).catch(() => {}); // clear old cached URL
+AsyncStorage.removeItem(API_URL_KEY).catch(() => {});
 AsyncStorage.setItem(API_URL_KEY, DEFAULT_API_URL).catch(() => {});
 
 export const setAuthToken = (token, user = null) => {
@@ -200,6 +199,11 @@ export const api = {
       }),
     getWhatsAppOffer: (id) => request(`/parties/${id}/whatsapp-offer`),
     delete: (id) => request(`/parties/${id}`, { method: "DELETE" }),
+    bulkImport: (parties) =>
+      request("/parties/bulk-import", {
+        method: "POST",
+        body: JSON.stringify({ parties }),
+      }),
   },
   items: {
     getAll: (params = "") => request(`/items${params ? `?${params}` : ""}`),
@@ -215,6 +219,16 @@ export const api = {
         body: JSON.stringify(payload),
       }),
     delete: (id) => request(`/items/${id}`, { method: "DELETE" }),
+    bulkImport: (items) =>
+      request("/items/bulk-import", {
+        method: "POST",
+        body: JSON.stringify({ items }),
+      }),
+    importPdf: (payload) =>
+      request("/items/import-pdf", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
   },
   invoices: {
     getAll: (params = "") => request(`/invoices${params ? `?${params}` : ""}`),
