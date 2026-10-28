@@ -4,10 +4,19 @@ import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 import Otp from "../models/Otp.js";
 import { protect } from "../middleware/authMiddleware.js";
+import { sendWhatsAppMessage } from "../services/whatsappService.js";
 const router = express.Router();
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "30d" });
 };
+function getPhoneVariants(phone) {
+  const raw = (phone || "").toString().replace(/[^0-9]/g, "");
+  const p10 = raw.slice(-10);
+  if (p10.length === 10) {
+    return [p10, `91${p10}`, `+91${p10}`, `0${p10}`];
+  }
+  return [raw];
+}
 router.post("/send-otp", async (req, res) => {
   try {
     const { phone, channel = "whatsapp" } = req.body;
@@ -17,26 +26,42 @@ router.post("/send-otp", async (req, res) => {
         message: "Phone or WhatsApp number is required",
       });
     }
-    const cleanPhone = phone.toString().trim().replace(/[^0-9]/g, "");
-    if (cleanPhone.length < 10) {
+    const raw = phone.toString().trim().replace(/[^0-9]/g, "");
+    const cleanPhone = raw.slice(-10);
+    if (cleanPhone.length !== 10) {
       return res.status(400).json({
         success: false,
-        message: "Please enter a valid 10-digit phone number",
+        message: "Please enter a valid 10-digit mobile number",
       });
     }
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
-    await Otp.findOneAndUpdate(
-      { phone: cleanPhone },
-      { code, channel, verified: false, expiresAt },
-      { upsert: true, new: true }
-    );
-    console.log(`[OTP SERVICE] Code for ${cleanPhone} via ${channel}: ${code}`);
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    const variants = getPhoneVariants(cleanPhone);
+    await Otp.deleteMany({ phone: { $in: variants } });
+    await Otp.create({
+      phone: cleanPhone,
+      code,
+      channel,
+      verified: false,
+      expiresAt,
+    });
+    let sentViaWhatsApp = false;
+    try {
+      const fullNumber = `91${cleanPhone}`;
+      const waMsg = `*Billing App Verification Code*\n\nYour 6-digit login OTP is: *${code}*\n\nValid for 10 minutes. Do not share this code with anyone.`;
+      const waRes = await sendWhatsAppMessage(fullNumber, waMsg);
+      if (waRes && waRes.success) {
+        sentViaWhatsApp = true;
+      }
+    } catch {}
     return res.status(200).json({
       success: true,
-      message: `OTP sent successfully to ${cleanPhone} via ${channel}`,
+      message: sentViaWhatsApp
+        ? `OTP code sent to your WhatsApp (+91 ${cleanPhone})`
+        : `Verification code generated for +91 ${cleanPhone}`,
       code,
       phone: cleanPhone,
+      sentViaWhatsApp,
     });
   } catch (error) {
     return res.status(500).json({
@@ -55,9 +80,11 @@ router.post("/verify-otp", async (req, res) => {
         message: "Phone and OTP code are required",
       });
     }
-    const cleanPhone = phone.toString().trim().replace(/[^0-9]/g, "");
+    const raw = phone.toString().trim().replace(/[^0-9]/g, "");
+    const cleanPhone = raw.slice(-10);
+    const variants = getPhoneVariants(cleanPhone);
     const otpDoc = await Otp.findOne({
-      phone: cleanPhone,
+      phone: { $in: variants },
       code: code.toString().trim(),
     });
     if (!otpDoc) {
@@ -73,26 +100,30 @@ router.post("/verify-otp", async (req, res) => {
         message: "OTP has expired. Please request a new one.",
       });
     }
-    otpDoc.verified = true;
-    await otpDoc.save();
-    const existingUser = await User.findOne({
-      $or: [{ phone: cleanPhone }, { whatsappNumber: cleanPhone }],
+    await Otp.deleteOne({ _id: otpDoc._id });
+    let existingUser = await User.findOne({
+      $or: [
+        { phone: { $in: variants } },
+        { whatsappNumber: { $in: variants } },
+      ],
     }).select("-password");
-    if (existingUser) {
-      const token = generateToken(existingUser._id);
-      return res.status(200).json({
-        success: true,
-        message: "OTP verified successfully. Logged in!",
-        isNewUser: false,
-        token,
-        user: existingUser,
+    if (!existingUser) {
+      const salt = await bcrypt.genSalt(10);
+      const defaultPassword = await bcrypt.hash(`wp_${cleanPhone}`, salt);
+      existingUser = await User.create({
+        name: "Store Owner",
+        businessName: "My Business",
+        phone: cleanPhone,
+        whatsappNumber: cleanPhone,
+        password: defaultPassword,
       });
     }
+    const token = generateToken(existingUser._id);
     return res.status(200).json({
       success: true,
-      message: "OTP verified. Proceed to register account.",
-      isNewUser: true,
-      phone: cleanPhone,
+      message: "OTP verified successfully. Logged in!",
+      token,
+      user: existingUser,
     });
   } catch (error) {
     return res.status(500).json({
@@ -121,23 +152,27 @@ router.post("/register", async (req, res) => {
         message: "Name, Business Name, Phone, and Password are required",
       });
     }
-    const cleanPhone = phone.toString().trim().replace(/[^0-9]/g, "");
-    const userExists = await User.findOne({ phone: cleanPhone });
+    const rawPhone = phone.toString().trim().replace(/[^0-9]/g, "");
+    const cleanPhone = rawPhone.length >= 10 ? rawPhone.slice(-10) : rawPhone;
+    const variants = getPhoneVariants(cleanPhone);
+    const userExists = await User.findOne({
+      $or: [{ phone: { $in: variants } }, { whatsappNumber: { $in: variants } }],
+    });
     if (userExists) {
       return res.status(400).json({
         success: false,
         message: "An account with this phone number already exists. Please login.",
       });
     }
+    const rawWa = (whatsappNumber || "").toString().trim().replace(/[^0-9]/g, "");
+    const cleanWa = rawWa.length >= 10 ? rawWa.slice(-10) : cleanPhone;
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
     const user = await User.create({
       name: name.trim(),
       businessName: businessName.trim(),
       phone: cleanPhone,
-      whatsappNumber: whatsappNumber
-        ? whatsappNumber.toString().trim().replace(/[^0-9]/g, "")
-        : cleanPhone,
+      whatsappNumber: cleanWa,
       email: email ? email.trim().toLowerCase() : undefined,
       password: hashedPassword,
       gstin: gstin ? gstin.trim().toUpperCase() : undefined,
@@ -181,44 +216,89 @@ router.post("/login", async (req, res) => {
         message: "Phone, WhatsApp number, or Email is required",
       });
     }
-    const cleanPhone = loginId.replace(/[^0-9]/g, "");
-    const user = await User.findOne({
-      $or: [
-        { phone: cleanPhone },
-        { whatsappNumber: cleanPhone },
-        { email: loginId.toLowerCase() },
-      ],
-    });
+    const isEmail = loginId.includes("@");
+    const rawPhone = loginId.replace(/[^0-9]/g, "");
+    const variants = rawPhone.length >= 10 ? getPhoneVariants(rawPhone) : [rawPhone];
+    if (otpCode) {
+      const otpDoc = await Otp.findOne({
+        phone: { $in: variants },
+        code: otpCode.toString().trim(),
+      });
+      if (!otpDoc || new Date() > otpDoc.expiresAt) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid or expired OTP code. Please request a new code.",
+        });
+      }
+      await Otp.deleteOne({ _id: otpDoc._id });
+      let user = await User.findOne({
+        $or: [
+          { phone: { $in: variants } },
+          { whatsappNumber: { $in: variants } },
+        ],
+      });
+      if (!user) {
+        const p10 = rawPhone.slice(-10);
+        const salt = await bcrypt.genSalt(10);
+        const defaultPassword = await bcrypt.hash(`wp_${p10}`, salt);
+        user = await User.create({
+          name: "Store Owner",
+          businessName: "My Business",
+          phone: p10,
+          whatsappNumber: p10,
+          password: defaultPassword,
+        });
+      }
+      const token = generateToken(user._id);
+      return res.status(200).json({
+        success: true,
+        message: "WhatsApp login successful!",
+        token,
+        user: {
+          _id: user._id,
+          name: user.name,
+          businessName: user.businessName,
+          phone: user.phone,
+          whatsappNumber: user.whatsappNumber,
+          email: user.email,
+          gstin: user.gstin,
+          address: user.address,
+          logo: user.logo,
+          upiId: user.upiId,
+          thermalPrinterSize: user.thermalPrinterSize,
+          invoiceStyle: user.invoiceStyle,
+          vipVisitThreshold: user.vipVisitThreshold || 3,
+        },
+      });
+    }
+    let user = null;
+    if (isEmail) {
+      user = await User.findOne({ email: loginId.toLowerCase() });
+    } else {
+      user = await User.findOne({
+        $or: [
+          { phone: { $in: variants } },
+          { whatsappNumber: { $in: variants } },
+        ],
+      });
+    }
     if (!user) {
       return res.status(401).json({
         success: false,
         message: "No account found with this phone number or email",
       });
     }
-    if (otpCode) {
-      const otpDoc = await Otp.findOne({
-        phone: cleanPhone,
-        code: otpCode.toString().trim(),
-      });
-      if (!otpDoc || new Date() > otpDoc.expiresAt) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid or expired OTP code",
-        });
-      }
-      await Otp.deleteOne({ _id: otpDoc._id });
-    } else if (password) {
-      const isMatch = await bcrypt.compare(password, user.password);
-      if (!isMatch) {
-        return res.status(401).json({
-          success: false,
-          message: "Incorrect password",
-        });
-      }
-    } else {
+    if (!password) {
       return res.status(400).json({
         success: false,
-        message: "Please provide either password or OTP code",
+        message: "Please enter your password or use WhatsApp OTP login",
+      });
+    }
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        message: "Incorrect password",
       });
     }
     const token = generateToken(user._id);

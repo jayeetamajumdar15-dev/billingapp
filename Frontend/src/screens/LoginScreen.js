@@ -19,21 +19,33 @@ export default function LoginScreen({ onNavigate, onLoginSuccess }) {
   const [otpSent, setOtpSent] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const handleSendOtp = async () => {
-    if (!identifier.trim()) {
-      Alert.alert("Input Required", "Please enter your phone or WhatsApp number");
+  const cleanPhoneNumber = (val) => {
+    const raw = (val || "").toString().replace(/[^0-9]/g, "");
+    if (raw.length >= 10) {
+      return raw.slice(-10);
+    }
+    return (val || "").trim();
+  };
+
+  const handleSendOtp = async (overrideTarget) => {
+    const target = cleanPhoneNumber(overrideTarget || identifier);
+    if (!target) {
+      Alert.alert("Input Required", "Please enter your 10-digit mobile number");
       return;
     }
     setLoading(true);
-    const res = await api.auth.sendOtp(identifier.trim(), "whatsapp");
+    const res = await api.auth.sendOtp(target, "whatsapp");
     setLoading(false);
 
     if (res.success) {
       setOtpSent(true);
       if (res.code) {
-        setOtpCode(res.code);
+        setOtpCode(String(res.code));
       }
-      Alert.alert("Code Sent", res.message || "OTP code has been generated");
+      Alert.alert(
+        res.sentViaWhatsApp ? "WhatsApp OTP Sent" : "Verification Code",
+        res.message || "OTP code has been sent to your WhatsApp"
+      );
     } else {
       Alert.alert("Error", res.message || "Failed to send code");
     }
@@ -51,13 +63,19 @@ export default function LoginScreen({ onNavigate, onLoginSuccess }) {
     }
 
     if (useOtp && !otpCode.trim()) {
-      Alert.alert("OTP Required", "Please enter the verification code");
+      if (!otpSent) {
+        handleSendOtp();
+        return;
+      }
+      Alert.alert("OTP Required", "Please enter the 6-digit code received on WhatsApp");
       return;
     }
 
     setLoading(true);
+    const isEmail = identifier.includes("@");
+    const cleanId = isEmail ? identifier.trim() : cleanPhoneNumber(identifier);
     const payload = useOtp
-      ? { identifier: identifier.trim(), otpCode: otpCode.trim() }
+      ? { identifier: cleanId, otpCode: otpCode.trim() }
       : { identifier: identifier.trim(), password };
 
     const res = await api.auth.login(payload);
@@ -68,6 +86,16 @@ export default function LoginScreen({ onNavigate, onLoginSuccess }) {
       onLoginSuccess(res.user);
     } else {
       Alert.alert("Login Failed", res.message || "Invalid credentials");
+    }
+  };
+
+  const handleWhatsAppShortcut = () => {
+    setUseOtp(true);
+    const clean = cleanPhoneNumber(identifier);
+    if (clean && clean.length === 10) {
+      handleSendOtp(clean);
+    } else {
+      Alert.alert("WhatsApp Login", "Please enter your 10-digit WhatsApp phone number to receive your OTP");
     }
   };
 
@@ -143,7 +171,7 @@ export default function LoginScreen({ onNavigate, onLoginSuccess }) {
           <View className="mb-6">
             <View className="flex-row justify-between items-center mb-1">
               <Text className="text-xs font-bold text-gray-600">Verification Code</Text>
-              <TouchableOpacity onPress={handleSendOtp}>
+              <TouchableOpacity onPress={() => handleSendOtp()}>
                 <Text className="text-xs font-bold text-blue-600">
                   {otpSent ? "Resend Code" : "Get Code"}
                 </Text>
@@ -187,15 +215,27 @@ export default function LoginScreen({ onNavigate, onLoginSuccess }) {
       <View className="items-center mt-8">
         <Text className="text-xs text-blue-600 font-bold mb-4">Or continue with</Text>
         <View className="flex-row gap-4">
-          <View className="w-11 h-11 rounded-xl bg-gray-100 items-center justify-center border border-gray-200">
+          <TouchableOpacity
+            onPress={() => Alert.alert("Coming Soon", "Google login will be supported in an upcoming update")}
+            activeOpacity={0.7}
+            className="w-11 h-11 rounded-xl bg-gray-100 items-center justify-center border border-gray-200"
+          >
             <FontAwesome name="google" size={18} color="#EA4335" />
-          </View>
-          <View className="w-11 h-11 rounded-xl bg-gray-100 items-center justify-center border border-gray-200">
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => Alert.alert("Coming Soon", "Apple login will be supported in an upcoming update")}
+            activeOpacity={0.7}
+            className="w-11 h-11 rounded-xl bg-gray-100 items-center justify-center border border-gray-200"
+          >
             <FontAwesome name="apple" size={20} color="#111827" />
-          </View>
-          <View className="w-11 h-11 rounded-xl bg-gray-100 items-center justify-center border border-gray-200">
-            <MaterialIcons name="whatsapp" size={22} color="#16A34A" />
-          </View>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleWhatsAppShortcut}
+            activeOpacity={0.7}
+            className="w-11 h-11 rounded-xl bg-green-50 items-center justify-center border border-green-300 shadow-sm"
+          >
+            <MaterialIcons name="whatsapp" size={24} color="#16A34A" />
+          </TouchableOpacity>
         </View>
       </View>
     </ScrollView>
