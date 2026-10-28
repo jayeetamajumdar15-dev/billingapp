@@ -883,20 +883,30 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
                     </TouchableOpacity>
                   </View>
                 </View>
-              ) : waStatus === "scan_qr" && waQr ? (
+              ) : waStatus === "scan_qr" || pairingCode ? (
                 <View className="items-center bg-gray-50 border border-gray-200 rounded-xl p-4">
-                  <Text className="text-xs font-bold text-gray-800 mb-2">
-                    Scan this QR code with WhatsApp:
-                  </Text>
-                  <Image
-                    source={{ uri: waQr }}
-                    style={{ width: 220, height: 220, borderRadius: 12, backgroundColor: "#FFFFFF" }}
-                  />
-                  <View className="mt-3 bg-white p-3 rounded-lg border border-gray-200 w-full">
-                    <Text className="text-[11px] text-gray-700 font-medium">1. Open WhatsApp on your phone</Text>
-                    <Text className="text-[11px] text-gray-700 font-medium mt-1">2. Tap Settings (or 3 dots) → Linked Devices</Text>
-                    <Text className="text-[11px] text-gray-700 font-medium mt-1">3. Tap Link a Device and point your camera here</Text>
-                  </View>
+                  {waQr ? (
+                    <>
+                      <Text className="text-xs font-bold text-gray-800 mb-2">
+                        Scan this QR code with WhatsApp:
+                      </Text>
+                      <Image
+                        source={{ uri: waQr }}
+                        style={{ width: 220, height: 220, borderRadius: 12, backgroundColor: "#FFFFFF" }}
+                      />
+                      <View className="mt-3 bg-white p-3 rounded-lg border border-gray-200 w-full">
+                        <Text className="text-[11px] text-gray-700 font-medium">1. Open WhatsApp on your phone</Text>
+                        <Text className="text-[11px] text-gray-700 font-medium mt-1">2. Tap Settings (or 3 dots) → Linked Devices</Text>
+                        <Text className="text-[11px] text-gray-700 font-medium mt-1">3. Tap Link a Device and point your camera here</Text>
+                      </View>
+                    </>
+                  ) : (
+                    <View className="py-8 items-center justify-center">
+                      <ActivityIndicator size="large" color="#059669" />
+                      <Text className="text-xs font-bold text-gray-700 mt-3">Connecting to WhatsApp server...</Text>
+                      <Text className="text-[11px] text-gray-500 mt-1">Preparing multi-day sync session</Text>
+                    </View>
+                  )}
                   <View className="flex-row items-center justify-between w-full mt-3">
                     <TouchableOpacity
                       onPress={() => handleStartWaLink(true)}
@@ -922,8 +932,9 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
                       <Text className="text-[11px] text-gray-500 mb-2">Enter 10-digit phone number:</Text>
                       <View className="flex-row items-center">
                         <TextInput
-                          className="flex-1 bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-xs"
+                          className="flex-1 bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-xs text-gray-900"
                           placeholder="e.g. 7003317615"
+                          placeholderTextColor="#9CA3AF"
                           value={pairingPhone}
                           onChangeText={setPairingPhone}
                           keyboardType="phone-pad"

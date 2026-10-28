@@ -17,12 +17,10 @@ router.get("/status", async (req, res) => {
   const globalStatus = getWhatsAppStatus();
   const user = req.user;
 
-  // Determine user-specific WhatsApp linking status
   let userStatus = "disconnected";
   let userPhone = user?.whatsappLinkedNumber || null;
 
   if (globalStatus.status === "connected") {
-    // If user has confirmed linked or global is connected
     if (user?.whatsappLinked || !user?.whatsappLinkedNumber) {
       userStatus = "connected";
       userPhone = globalStatus.phoneNumber || user?.whatsappLinkedNumber;
@@ -53,7 +51,7 @@ router.get("/status", async (req, res) => {
 router.post("/init", async (req, res) => {
   const force = req.body?.force === true;
   await initWhatsApp(force);
-  const status = await waitForWhatsAppQrOrReady(7000);
+  const status = await waitForWhatsAppQrOrReady(12000);
   return res.status(200).json({ success: true, ...status });
 });
 
@@ -78,7 +76,6 @@ router.post("/pairing-code", async (req, res) => {
 });
 
 router.post("/disconnect", async (req, res) => {
-  // Mark this specific user as disconnected
   if (req.user && req.user._id) {
     req.user.whatsappLinked = false;
     req.user.whatsappLinkedNumber = "";

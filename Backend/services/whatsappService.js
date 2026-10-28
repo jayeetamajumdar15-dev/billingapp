@@ -27,6 +27,7 @@ let isInitializing = false;
 let reconnectAttempts = 0;
 let keepAliveInterval = null;
 let selfPingStarted = false;
+let syncDebounceTimer = null;
 
 const MAX_RECONNECT_DELAY = 15000;
 
@@ -38,6 +39,15 @@ function getReconnectDelay() {
 
 async function restoreSessionFromMongo() {
   try {
+    const credsDoc = await WhatsAppSession.findOne({ key: "creds.json" }).lean();
+    if (!credsDoc || !credsDoc.data || !credsDoc.data.registered) {
+      if (fs.existsSync(SESSION_DIR)) {
+        fs.rmSync(SESSION_DIR, { recursive: true, force: true });
+      }
+      fs.mkdirSync(SESSION_DIR, { recursive: true });
+      await WhatsAppSession.deleteMany({}).catch(() => {});
+      return;
+    }
     if (!fs.existsSync(SESSION_DIR)) {
       fs.mkdirSync(SESSION_DIR, { recursive: true });
     }
@@ -49,11 +59,8 @@ async function restoreSessionFromMongo() {
           fs.writeFileSync(filePath, JSON.stringify(rec.data), "utf-8");
         }
       }
-      console.log(`[WhatsApp] Restored ${records.length} session auth keys from MongoDB.`);
     }
-  } catch (e) {
-    console.warn("[WhatsApp] Session restore note:", e.message);
-  }
+  } catch {}
 }
 
 async function syncSessionToMongo() {
@@ -74,9 +81,14 @@ async function syncSessionToMongo() {
         } catch {}
       }
     }
-  } catch (e) {
-    console.warn("[WhatsApp] Session sync note:", e.message);
-  }
+  } catch {}
+}
+
+function triggerSessionSync() {
+  if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
+  syncDebounceTimer = setTimeout(() => {
+    syncSessionToMongo().catch(() => {});
+  }, 800);
 }
 
 function startKeepAlive() {
@@ -132,7 +144,7 @@ export const getWhatsAppStatus = () => ({
   sessionPersisted: fs.existsSync(path.join(SESSION_DIR, "creds.json")),
 });
 
-export const waitForWhatsAppQrOrReady = async (timeoutMs = 7000) => {
+export const waitForWhatsAppQrOrReady = async (timeoutMs = 12000) => {
   if (connectionStatus === "connected" || (connectionStatus === "scan_qr" && qrCodeData)) {
     return getWhatsAppStatus();
   }
@@ -173,6 +185,14 @@ export const initWhatsApp = async (forceRestart = false) => {
       fs.mkdirSync(SESSION_DIR, { recursive: true });
     }
 
+    try {
+      fs.watch(SESSION_DIR, (eventType, filename) => {
+        if (filename && filename.endsWith(".json")) {
+          triggerSessionSync();
+        }
+      });
+    } catch {}
+
     const { state, saveCreds } = await useMultiFileAuthState(SESSION_DIR);
 
     let waVersion = [2, 3000, 1015901307];
@@ -191,7 +211,7 @@ export const initWhatsApp = async (forceRestart = false) => {
       },
       printQRInTerminal: false,
       logger,
-      browser: Browsers.ubuntu("Chrome"),
+      browser: Browsers.macOS("Chrome"),
       syncFullHistory: false,
       markOnlineOnConnect: true,
       connectTimeoutMs: 90000,
@@ -205,10 +225,8 @@ export const initWhatsApp = async (forceRestart = false) => {
     sock.ev.on("creds.update", async () => {
       try {
         await saveCreds();
-        await syncSessionToMongo();
-      } catch (err) {
-        console.error("[WhatsApp] Failed to save creds:", err.message);
-      }
+        triggerSessionSync();
+      } catch {}
     });
 
     sock.ev.on("messages.upsert", async ({ messages }) => {
@@ -218,27 +236,14 @@ export const initWhatsApp = async (forceRestart = false) => {
           if (msg.key?.fromMe) continue;
           const remoteJid = msg.key?.remoteJid;
           if (!remoteJid || remoteJid.endsWith("@g.us")) continue;
-
-          const body = (
+          const text = (
             msg.message?.conversation ||
             msg.message?.extendedTextMessage?.text ||
             ""
           ).trim();
-
-          if (!body) continue;
-          const lower = body.toLowerCase();
-
-          if (lower.includes("loved it") || lower.includes("fantastic experience")) {
+          if (["1", "2", "3", "4", "5"].includes(text)) {
             await sock.sendMessage(remoteJid, {
-              text: `Thank you so much for your wonderful feedback! 🎉 We are delighted to hear that you loved your order! We look forward to serving you again soon. ✨`,
-            });
-          } else if (lower.includes("needs improvement")) {
-            await sock.sendMessage(remoteJid, {
-              text: `Thank you for sharing your feedback with us. 🙏 We sincerely apologize for falling short of your expectations today! Our management has been notified and we will make sure your next visit is exceptional.`,
-            });
-          } else if (lower.includes("okay")) {
-            await sock.sendMessage(remoteJid, {
-              text: `Thank you for your feedback! 👍 We appreciate your visit and are always striving to make your experience even better. Have a wonderful day! 🌟`,
+              text: "Thank you for your feedback! We appreciate your visit and are always striving to make your experience even better. Have a wonderful day!",
             });
           }
         }
@@ -266,7 +271,6 @@ export const initWhatsApp = async (forceRestart = false) => {
         isInitializing = false;
         startKeepAlive();
         await syncSessionToMongo();
-        console.log(`[WhatsApp] Successfully connected: +${connectedNumber}`);
       }
 
       if (connection === "close") {
@@ -277,7 +281,10 @@ export const initWhatsApp = async (forceRestart = false) => {
         isInitializing = false;
 
         if (statusCode === DisconnectReason.loggedOut) {
-          console.warn("[WhatsApp] Logged out code received, checking session integrity...");
+          try {
+            fs.rmSync(SESSION_DIR, { recursive: true, force: true });
+            await WhatsAppSession.deleteMany({});
+          } catch {}
           const delay = getReconnectDelay();
           setTimeout(() => initWhatsApp(false), delay);
         } else if (statusCode === DisconnectReason.restartRequired) {
@@ -316,43 +323,24 @@ export const requestPairingCodeForNumber = async (phoneNumber) => {
     throw new Error("Invalid phone number. Please enter a valid 10-digit mobile number.");
   }
 
-  if (connectionStatus === "connected") {
-    await disconnectWhatsApp();
-    await new Promise((r) => setTimeout(r, 600));
-  }
-
-  stopKeepAlive();
-  safelyCloseSocket();
-  try {
-    if (fs.existsSync(SESSION_DIR)) {
-      fs.rmSync(SESSION_DIR, { recursive: true, force: true });
-    }
-  } catch {}
-  try {
-    await WhatsAppSession.deleteMany({});
-  } catch {}
-  qrCodeData = null;
-  connectionStatus = "disconnected";
-  connectedNumber = null;
-  isInitializing = false;
+  await disconnectWhatsApp(false);
+  await new Promise((r) => setTimeout(r, 500));
 
   await initWhatsApp(true);
 
   let waitedMs = 0;
-  while ((!sock || (connectionStatus !== "scan_qr" && !qrCodeData)) && waitedMs < 16000) {
+  while ((!sock || !sock.requestPairingCode) && waitedMs < 16000) {
     await new Promise((r) => setTimeout(r, 350));
     waitedMs += 350;
   }
 
-  if (!sock) {
+  if (!sock || !sock.requestPairingCode) {
     throw new Error("WhatsApp connection timeout. Please try again or use QR code scan.");
   }
 
-  await new Promise((r) => setTimeout(r, 800));
+  await new Promise((r) => setTimeout(r, 1200));
 
-  console.log(`[WhatsApp] Requesting fresh pairing code for +${fullNumber}...`);
   const rawCode = await sock.requestPairingCode(fullNumber);
-  console.log(`[WhatsApp] Pairing code generated successfully: ${rawCode}`);
 
   const formattedCode =
     rawCode && rawCode.length === 8
@@ -362,7 +350,7 @@ export const requestPairingCodeForNumber = async (phoneNumber) => {
   return formattedCode;
 };
 
-export const disconnectWhatsApp = async () => {
+export const disconnectWhatsApp = async (autoRestart = true) => {
   stopKeepAlive();
   try {
     if (sock) await sock.logout();
@@ -379,7 +367,9 @@ export const disconnectWhatsApp = async () => {
   connectedNumber = null;
   isInitializing = false;
   reconnectAttempts = 0;
-  setTimeout(() => initWhatsApp(true), 1000);
+  if (autoRestart) {
+    setTimeout(() => initWhatsApp(true), 1000);
+  }
   return { success: true };
 };
 
@@ -407,14 +397,12 @@ export const sendWhatsAppMessage = async (recipientPhone, textMessage) => {
     await sock.sendMessage(jid, { text: textMessage });
     return { success: true };
   } catch (error) {
-    console.error(`[WhatsApp] Failed to send message to ${recipientPhone}:`, error.message);
     return { success: false, message: error.message };
   }
 };
 
 export const sendWhatsAppDocument = async (recipientPhone, documentBuffer, fileName = "Invoice.pdf", caption = "") => {
   if (!sock || connectionStatus !== "connected") {
-    console.warn("[WhatsApp] Cannot send PDF: WhatsApp socket not connected");
     return { success: false, message: "WhatsApp not linked via QR code" };
   }
 
@@ -435,18 +423,15 @@ export const sendWhatsAppDocument = async (recipientPhone, documentBuffer, fileN
     } catch {}
 
     const finalBuffer = Buffer.isBuffer(documentBuffer) ? documentBuffer : Buffer.from(documentBuffer);
-    
-    console.log(`[WhatsApp] Sending PDF document (${finalBuffer.length} bytes) to ${jid}...`);
+
     await sock.sendMessage(jid, {
       document: finalBuffer,
       mimetype: "application/pdf",
       fileName: fileName || "Invoice.pdf",
       caption: caption || "",
     });
-    console.log(`[WhatsApp] PDF document successfully delivered to ${jid}`);
     return { success: true };
   } catch (error) {
-    console.error(`[WhatsApp] Failed to send PDF document to ${recipientPhone}:`, error.message);
     return { success: false, message: error.message };
   }
 };
