@@ -216,4 +216,77 @@ router.get("/parties/csv", async (req, res) => {
   }
 });
 
+// Top selling items per day
+router.get("/top-items", async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const days = parseInt(req.query.days) || 7;
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    startDate.setHours(0, 0, 0, 0);
+
+    const results = await Invoice.aggregate([
+      {
+        $match: {
+          userId,
+          createdAt: { $gte: startDate },
+        },
+      },
+      { $unwind: "$items" },
+      {
+        $group: {
+          _id: {
+            date: {
+              $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
+            },
+            itemName: { $ifNull: ["$items.name", "$items.itemName"] },
+          },
+          totalQty: { $sum: { $ifNull: ["$items.quantity", "$items.qty", 1] } },
+          totalRevenue: {
+            $sum: {
+              $ifNull: [
+                "$items.total",
+                "$items.amount",
+                {
+                  $multiply: [
+                    { $ifNull: ["$items.sellingPrice", "$items.rate", 0] },
+                    { $ifNull: ["$items.quantity", "$items.qty", 1] },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      },
+      { $sort: { "_id.date": -1, totalQty: -1 } },
+      {
+        $group: {
+          _id: "$_id.date",
+          items: {
+            $push: {
+              name: "$_id.itemName",
+              totalQty: "$totalQty",
+              totalRevenue: "$totalRevenue",
+            },
+          },
+        },
+      },
+      { $sort: { _id: -1 } },
+      { $limit: days },
+      {
+        $project: {
+          date: "$_id",
+          topItems: { $slice: ["$items", 10] },
+          _id: 0,
+        },
+      },
+    ]);
+
+    return res.status(200).json({ success: true, data: results });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 export default router;
+

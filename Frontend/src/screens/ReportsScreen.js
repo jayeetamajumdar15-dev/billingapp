@@ -19,6 +19,7 @@ export default function ReportsScreen({ onOpenDrawer, onBack }) {
   const [salesData, setSalesData] = useState(null);
   const [inventoryItems, setInventoryItems] = useState([]);
   const [parties, setParties] = useState([]);
+  const [topItemsData, setTopItemsData] = useState([]);
   const loadData = async () => {
     setLoading(true);
     try {
@@ -36,6 +37,11 @@ export default function ReportsScreen({ onOpenDrawer, onBack }) {
         const res = await api.parties.getAll();
         if (res.success && res.parties) {
           setParties(res.parties);
+        }
+      } else if (reportType === "topItems") {
+        const res = await api.reports.getTopItems(7);
+        if (res.success && res.data) {
+          setTopItemsData(res.data);
         }
       }
     } catch (err) {
@@ -154,6 +160,25 @@ export default function ReportsScreen({ onOpenDrawer, onBack }) {
             }`}
           >
             Customers
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setReportType("topItems")}
+          className={`flex-1 py-2 rounded-xl items-center flex-row justify-center mx-1 ${
+            reportType === "topItems" ? "bg-orange-500 shadow-sm" : "bg-gray-100"
+          }`}
+        >
+          <Ionicons
+            name="trophy"
+            size={14}
+            color={reportType === "topItems" ? "#FFFFFF" : "#4B5563"}
+          />
+          <Text
+            className={`text-xs font-bold ml-1.5 ${
+              reportType === "topItems" ? "text-white" : "text-gray-700"
+            }`}
+          >
+            Top Sellers
           </Text>
         </TouchableOpacity>
       </View>
@@ -301,6 +326,15 @@ export default function ReportsScreen({ onOpenDrawer, onBack }) {
             </View>
           </View>
         )}
+        {reportType === "topItems" && (
+          <View className="bg-white p-4 rounded-2xl border border-orange-200 shadow-sm mb-4">
+            <View className="flex-row items-center mb-1">
+              <Ionicons name="trophy" size={16} color="#F97316" />
+              <Text className="text-xs text-orange-700 font-bold ml-2">Top Selling Items — Last 7 Days</Text>
+            </View>
+            <Text className="text-[11px] text-gray-400">Items ranked by quantity sold each day</Text>
+          </View>
+        )}
         <View className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden mb-6">
           <View className="bg-gray-100 px-4 py-3 border-b border-gray-200 flex-row justify-between items-center">
             <Text className="text-xs font-bold text-gray-700 uppercase tracking-wide">
@@ -308,6 +342,8 @@ export default function ReportsScreen({ onOpenDrawer, onBack }) {
                 ? `Invoices (${salesData?.invoices?.length || 0})`
                 : reportType === "inventory"
                 ? `Stock Items (${inventoryItems.length})`
+                : reportType === "topItems"
+                ? `Top Sellers by Day (last 7 days)`
                 : `Customer Ledger (${parties.length})`}
             </Text>
             <Text className="text-[10px] text-gray-400 font-medium">Recent Records</Text>
@@ -317,6 +353,42 @@ export default function ReportsScreen({ onOpenDrawer, onBack }) {
               <ActivityIndicator size="small" color="#2563EB" />
               <Text className="text-xs text-gray-400 mt-2">Loading report records...</Text>
             </View>
+          ) : reportType === "topItems" ? (
+            topItemsData.length === 0 ? (
+              <View className="py-10 items-center">
+                <Ionicons name="trophy-outline" size={40} color="#D1D5DB" />
+                <Text className="text-xs text-gray-400 mt-3">No sales data yet</Text>
+                <Text className="text-[11px] text-gray-300 mt-1">Create some invoices to see top selling items here</Text>
+              </View>
+            ) : (
+              topItemsData.map((dayData, dayIdx) => (
+                <View key={dayIdx}>
+                  <View className="flex-row items-center px-4 py-2 bg-orange-50 border-b border-orange-100">
+                    <Ionicons name="calendar-outline" size={13} color="#F97316" />
+                    <Text className="text-xs font-extrabold text-orange-700 ml-2">
+                      {new Date(dayData.date).toLocaleDateString("en-IN", { weekday: "short", day: "2-digit", month: "short" })}
+                    </Text>
+                  </View>
+                  {(dayData.topItems || []).map((it, idx) => (
+                    <View key={idx} className="px-4 py-3 border-b border-gray-100 flex-row items-center">
+                      <View
+                        style={{ backgroundColor: idx === 0 ? "#FBBF24" : idx === 1 ? "#9CA3AF" : idx === 2 ? "#B45309" : "#F3F4F6", width: 24, height: 24, borderRadius: 12, alignItems: "center", justifyContent: "center", marginRight: 10 }}
+                      >
+                        <Text style={{ fontSize: 10, fontWeight: "900", color: idx < 3 ? "#FFFFFF" : "#6B7280" }}>{idx + 1}</Text>
+                      </View>
+                      <View className="flex-1">
+                        <Text className="text-xs font-bold text-gray-900" numberOfLines={1}>{it.name || "Unknown Item"}</Text>
+                        <Text className="text-[10px] text-gray-500 mt-0.5">Qty sold: <Text className="font-bold text-blue-700">{it.totalQty}</Text></Text>
+                      </View>
+                      <View className="items-end">
+                        <Text className="text-xs font-black text-emerald-700">Rs. {Number(it.totalRevenue || 0).toLocaleString("en-IN")}</Text>
+                        <Text className="text-[9px] text-gray-400">revenue</Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              ))
+            )
           ) : reportType === "sales" ? (
             (salesData?.invoices || []).length === 0 ? (
               <View className="py-8 items-center">

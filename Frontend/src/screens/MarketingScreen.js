@@ -1,56 +1,70 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   ScrollView,
-  Alert,
-  Image,
   ActivityIndicator,
   Modal,
   RefreshControl,
+  Linking,
+  FlatList,
+  StyleSheet,
 } from "react-native";
-import { Ionicons, FontAwesome, FontAwesome5 } from "@expo/vector-icons";
+import { Ionicons, FontAwesome5 } from "@expo/vector-icons";
 import { api } from "../config/api";
 import { shareCataloguePdf, CATALOGUE_STYLES } from "../utils/cataloguePdfGenerator";
+import { showToast } from "../utils/toast";
+
+// ─── 3-Colour Palette ────────────────────────────────────────────────
+const C = {
+  navy: "#1E3A8A",      // Primary Theme
+  navyDark: "#172554",  // Deep Navy for headers
+  navyLight: "#EFF6FF", // Soft Navy tint for chips/cards
+  emerald: "#059669",   // Action / WhatsApp / Success
+  emeraldLight: "#ECFDF5", // Soft emerald tint
+  white: "#FFFFFF",     // Clean card & background
+  slate50: "#F8FAFC",   // Clean surface
+  slate100: "#F1F5F9",  // Subtle divider
+  slate200: "#E2E8F0",  // Crisp border
+  slate400: "#94A3B8",  // Subtle icons
+  slate600: "#475569",  // Secondary text
+  slate900: "#0F172A",  // Deep readable text
+  amber: "#D97706",     // VIP gold accent
+  amberLight: "#FEF3C7",
+};
 
 const MARKETING_TEMPLATES = [
   {
     id: "weekend_sale",
     title: "🎉 Weekend Mega Discount",
-    tag: "Sale / Offer",
-    message: "Special Weekend Offer from {STORE}! Enjoy flat 15% OFF on all your favorite items this Saturday & Sunday. Visit us today or reply to this message to place your order! 🛍️✨",
+    tag: "Sale",
+    message: "Special Weekend Offer from {STORE}! Enjoy flat 15% OFF on all your favorite items this weekend. Visit us today or reply here to order directly on WhatsApp! 🛍️",
   },
   {
     id: "new_arrivals",
     title: "🌟 New Arrivals & Fresh Stock",
-    tag: "Fresh Stock",
-    message: "Exciting news from {STORE}! Our newest collection and fresh items have just arrived. Drop by to explore or message us on WhatsApp for fast home delivery! 🚀",
+    tag: "Stock",
+    message: "Exciting news from {STORE}! Our newest collection and fresh items have just arrived. Drop by our store or message us right here for fast home delivery! 🚀",
   },
   {
     id: "vip_loyalty",
-    title: "👑 Exclusive VIP Member Reward",
-    tag: "VIP Club",
-    message: "Dear Valued Customer, as a thank you for your continued loyalty with {STORE}, we have an exclusive complimentary perk waiting for you on your next visit! Show this message at the counter to redeem. 🎁",
+    title: "👑 VIP Member Exclusive Reward",
+    tag: "VIP",
+    message: "Dear Valued VIP Customer, as a thank you for your regular patronage with {STORE}, we have an exclusive perk waiting on your next visit! Show this message at the counter to redeem. 🎁",
   },
   {
     id: "festive_greeting",
     title: "🪔 Festive Greetings & Special Deals",
-    tag: "Festival",
-    message: "Warm wishes for the festive season from {STORE}! Celebrate with your loved ones and make every moment sweet with our festive specials and discounts. Available now! 🪔🎉",
+    tag: "Festive",
+    message: "Warm festive wishes from {STORE}! Celebrate with your loved ones and enjoy our seasonal discounts. We look forward to serving you! 🪔🎉",
   },
   {
     id: "we_miss_you",
-    title: "❤️ We Miss You - Welcome Back Gift",
+    title: "❤️ We Miss You — Welcome Back",
     tag: "Win-back",
-    message: "It has been a while since we saw you at {STORE}! We would love to welcome you back with a special 10% discount on your next purchase. Simply show this text at checkout! 😊",
-  },
-  {
-    id: "quick_order",
-    title: "📱 1-Tap WhatsApp Ordering",
-    tag: "Delivery",
-    message: "Need quick delivery from {STORE}? Save our number and order anytime directly on WhatsApp for fast, convenient doorstep delivery! Reply with 'MENU' to get started. 🛵📦",
+    message: "It has been a while since we saw you at {STORE}! We would love to welcome you back with a special 10% discount on your next visit. Show this message at checkout! 😊",
   },
 ];
 
@@ -59,12 +73,18 @@ export default function MarketingScreen({ user, onOpenDrawer, onBack }) {
   const [selectedCatStyle, setSelectedCatStyle] = useState("modern_minimal");
   const [generatingCatalogue, setGeneratingCatalogue] = useState(false);
   const [loadingItems, setLoadingItems] = useState(false);
+
+  // Broadcast state
   const [customBroadcastMsg, setCustomBroadcastMsg] = useState("");
   const [broadcastAudience, setBroadcastAudience] = useState("all");
   const [broadcasting, setBroadcasting] = useState(false);
-  const [showFlyerModal, setShowFlyerModal] = useState(false);
-  const [flyerTableNum, setFlyerTableNum] = useState("Table 1");
   const [refreshing, setRefreshing] = useState(false);
+
+  // Bulk Dispatcher Queue Modal State
+  const [queueModalVisible, setQueueModalVisible] = useState(false);
+  const [queueRecipients, setQueueRecipients] = useState([]);
+  const [currentQueueIndex, setCurrentQueueIndex] = useState(0);
+  const [sentMap, setSentMap] = useState({});
 
   useEffect(() => {
     loadMenuItems();
@@ -74,9 +94,7 @@ export default function MarketingScreen({ user, onOpenDrawer, onBack }) {
     setLoadingItems(true);
     try {
       const res = await api.items.getAll();
-      if (res && res.success) {
-        setCatalogues(res.items || []);
-      }
+      if (res?.success) setCatalogues(res.items || []);
     } catch {} finally {
       setLoadingItems(false);
     }
@@ -84,418 +102,497 @@ export default function MarketingScreen({ user, onOpenDrawer, onBack }) {
 
   const handlePullRefresh = async () => {
     setRefreshing(true);
-    try {
-      await loadMenuItems();
-    } catch {}
+    await loadMenuItems().catch(() => {});
     setRefreshing(false);
   };
 
-  const handleBroadcastToAllParties = async () => {
+  // ─── Trigger Broadcast ───────────────────────────────────────────────
+  const handleStartBroadcast = async () => {
     if (!customBroadcastMsg.trim()) {
-      Alert.alert("Empty Message", "Please type your message in the broadcast box before sending.");
+      showToast.warning("Please enter your message before sending.", "Empty Message");
       return;
     }
+
     setBroadcasting(true);
     try {
       const res = await api.parties.broadcastOffer({
         targetAudience: broadcastAudience,
         customMessage: customBroadcastMsg.trim(),
+        autoSendViaServer: false, // Provide full control via the Dispatcher Queue
       });
-      if (res && res.success) {
-        Alert.alert(
-          "Broadcast Dispatched 🎉",
-          res.message || `Message broadcast successfully to ${res.total || 0} customers!`
+
+      if (!res?.success) {
+        showToast.error(res?.message || "No matching customers found.", "Broadcast Notice");
+        setBroadcasting(false);
+        return;
+      }
+
+      const list = res.recipients || [];
+      if (!list.length) {
+        showToast.warning(
+          broadcastAudience === "vips"
+            ? "No VIP customers found. Mark customers as Regular in Party or check sales."
+            : "No customers with valid mobile numbers found.",
+          "No Customers Found"
+        );
+        setBroadcasting(false);
+        return;
+      }
+
+      // If sent directly via server socket
+      if (res.mode === "server") {
+        showToast.success(
+          `Delivered to ${res.sentCount} customers directly via WhatsApp!`,
+          "Broadcast Delivered 🎉"
         );
         setCustomBroadcastMsg("");
-      } else {
-        Alert.alert("Broadcast Notice", res?.message || "Failed to broadcast message to all parties.");
+        setBroadcasting(false);
+        return;
       }
+
+      // Open the interactive multi-customer dispatch queue
+      setQueueRecipients(list);
+      setCurrentQueueIndex(0);
+      setSentMap({});
+      setQueueModalVisible(true);
+      showToast.info(
+        `Loaded ${list.length} customer${list.length > 1 ? "s" : ""}. Tap Send to dispatch each.`,
+        "Dispatch Queue Ready"
+      );
     } catch (err) {
-      Alert.alert("Error", err.message || "Failed to broadcast message");
+      showToast.error(err.message || "Failed to start broadcast.", "Broadcast Error");
     } finally {
       setBroadcasting(false);
     }
   };
 
+  // ─── Dispatch a specific customer from the queue ─────────────────────
+  const handleDispatchCustomer = async (index) => {
+    if (!queueRecipients[index]) return;
+    const customer = queueRecipients[index];
+    const url = customer.whatsappUrl;
+
+    if (url) {
+      try {
+        await Linking.openURL(url);
+        // Mark as sent
+        setSentMap((prev) => ({ ...prev, [customer.phone]: true }));
+
+        // Advance to next un-sent customer
+        if (index === currentQueueIndex && index + 1 < queueRecipients.length) {
+          setCurrentQueueIndex(index + 1);
+        }
+
+        showToast.success(`Opened WhatsApp for ${customer.name}`, "Message Sent");
+      } catch (e) {
+        showToast.error("Could not launch WhatsApp.", "Link Error");
+      }
+    }
+  };
+
+  const handleApplyTemplate = (tmpl) => {
+    const storeName = user?.businessName || "Our Store";
+    const formatted = tmpl.message.replace(/\{STORE\}/g, storeName);
+    setCustomBroadcastMsg(formatted);
+    showToast.info(`Template "${tmpl.tag}" applied!`, "Template Loaded");
+  };
+
   const handleShareCatalogue = async () => {
-    if (!catalogues || catalogues.length === 0) {
-      Alert.alert("Catalogue Empty", "No items found in your inventory. Add items first to generate catalogue.");
+    if (!catalogues.length) {
+      showToast.warning("Please add products to your inventory first.", "Catalogue Empty");
       return;
     }
     setGeneratingCatalogue(true);
     try {
       const storeData = {
         businessName: user?.businessName || "My Store",
-        phone: user?.phone || "7003317615",
+        phone: user?.phone || "",
         address: user?.address || "",
         logo: user?.logo || "",
         email: user?.email || "",
       };
       const res = await shareCataloguePdf(catalogues, storeData, selectedCatStyle);
       if (res && !res.success) {
-        Alert.alert("Catalogue Notice", res.error || "Could not launch PDF share");
+        showToast.error(res.error || "Could not generate PDF.", "Error");
+      } else {
+        showToast.success("Catalogue generated successfully!", "PDF Ready");
       }
     } catch (err) {
-      Alert.alert("Error", err.message || "Failed to generate catalogue");
+      showToast.error(err.message || "Failed to generate catalogue.", "Error");
     } finally {
       setGeneratingCatalogue(false);
     }
   };
 
-  const handleShareCampaign = (template) => {
-    const storeName = user?.businessName || "Our Store";
-    const text = template.message.replace(/\{STORE\}/g, storeName);
-    const waUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
-    if (typeof window !== "undefined" && window.open) {
-      window.open(waUrl, "_blank");
-    } else {
-      require("react-native").Linking.openURL(waUrl);
-    }
-  };
+  const currentRecipient = queueRecipients[currentQueueIndex];
+  const sentCount = Object.keys(sentMap).length;
+  const totalRecipients = queueRecipients.length;
 
   return (
-    <View style={{ flex: 1 }} className="flex-1 bg-gray-50">
-      <View className="bg-blue-600 px-4 pt-10 pb-4">
-        <View className="flex-row items-center justify-between">
-          <View className="flex-row items-center">
-            <TouchableOpacity onPress={onOpenDrawer} className="mr-2 p-1">
-              <Ionicons name="menu" size={24} color="#FFFFFF" />
+    <View style={{ flex: 1, backgroundColor: C.slate50 }}>
+      {/* ── Header (Deep Navy) ── */}
+      <View style={styles.header}>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <TouchableOpacity onPress={onOpenDrawer} style={{ padding: 6, marginRight: 8 }}>
+            <Ionicons name="menu" size={24} color={C.white} />
+          </TouchableOpacity>
+          {onBack && (
+            <TouchableOpacity onPress={onBack} style={styles.backBtn}>
+              <Ionicons name="arrow-back" size={14} color={C.white} />
+              <Text style={{ color: C.white, fontSize: 12, fontWeight: "700", marginLeft: 4 }}>Back</Text>
             </TouchableOpacity>
-            {onBack ? (
-              <TouchableOpacity
-                onPress={onBack}
-                className="flex-row items-center bg-white/20 px-2.5 py-1 rounded-lg mr-2"
-              >
-                <Ionicons name="arrow-back" size={16} color="#FFFFFF" />
-                <Text className="text-white text-xs font-bold ml-1">Back</Text>
-              </TouchableOpacity>
-            ) : null}
-            <View>
-              <Text className="text-white text-xl font-bold">Marketing & Growth</Text>
-              <Text className="text-blue-100 text-[11px]">
-                WhatsApp Broadcasts, PDF Catalogues & Flyers
-              </Text>
-            </View>
+          )}
+          <View style={{ flex: 1 }}>
+            <Text style={styles.headerTitle}>Marketing & Growth</Text>
+            <Text style={styles.headerSubtitle}>Broadcasts · Catalogues · VIP Retention</Text>
           </View>
         </View>
       </View>
 
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 14, paddingBottom: 120, flexGrow: 1 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 110 }}
         keyboardShouldPersistTaps="handled"
-        nestedScrollEnabled={true}
-        showsVerticalScrollIndicator={true}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handlePullRefresh}
-            tintColor="#2563EB"
-            colors={["#2563EB"]}
-          />
-        }
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handlePullRefresh} tintColor={C.navy} colors={[C.navy]} />}
       >
-        <View className="bg-white rounded-2xl p-4 mb-4 border border-blue-200 shadow-sm">
-          <View className="flex-row items-center justify-between mb-2">
-            <View className="flex-1 mr-2">
-              <Text className="text-xs font-bold text-blue-900 uppercase tracking-wider">
-                Broadcast WhatsApp Message to All Customers
-              </Text>
-              <Text className="text-[11px] text-gray-500 mt-0.5">
-                Send custom announcements, new offers, or greetings to all customer numbers
-              </Text>
+        {/* ── Card 1: WhatsApp Bulk & VIP Broadcast ── */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View style={[styles.iconCircle, { backgroundColor: C.navyLight }]}>
+              <FontAwesome5 name="bullhorn" size={16} color={C.navy} />
             </View>
-            <View className="bg-blue-100 px-2.5 py-0.5 rounded-full">
-              <Text className="text-[10px] text-blue-700 font-bold">Bulk WhatsApp</Text>
+            <View style={{ flex: 1, marginLeft: 10 }}>
+              <Text style={styles.cardTitle}>WhatsApp Broadcast</Text>
+              <Text style={styles.cardSubtitle}>Dispatch offers to all customers or VIP-only</Text>
+            </View>
+            <View style={[styles.badge, { backgroundColor: C.emeraldLight }]}>
+              <Text style={[styles.badgeText, { color: C.emerald }]}>Verified Direct</Text>
             </View>
           </View>
 
-          <View className="flex-row items-center gap-2 mb-3">
-            <Text className="text-xs font-bold text-gray-700 mr-1">Target Audience:</Text>
+          {/* Audience Selector */}
+          <Text style={styles.fieldLabel}>Select Target Audience:</Text>
+          <View style={styles.audienceRow}>
             <TouchableOpacity
               onPress={() => setBroadcastAudience("all")}
-              className={`px-3 py-1.5 rounded-full border ${
-                broadcastAudience === "all"
-                  ? "bg-blue-600 border-blue-600"
-                  : "bg-gray-100 border-gray-200"
-              }`}
+              style={[
+                styles.audienceOption,
+                broadcastAudience === "all" && { backgroundColor: C.navy, borderColor: C.navy },
+              ]}
             >
+              <Ionicons
+                name="people"
+                size={16}
+                color={broadcastAudience === "all" ? C.white : C.slate600}
+              />
               <Text
-                className={`text-xs font-bold ${
-                  broadcastAudience === "all" ? "text-white" : "text-gray-700"
-                }`}
+                style={[
+                  styles.audienceOptionText,
+                  broadcastAudience === "all" && { color: C.white, fontWeight: "800" },
+                ]}
               >
                 All Customers
               </Text>
             </TouchableOpacity>
+
             <TouchableOpacity
               onPress={() => setBroadcastAudience("vips")}
-              className={`px-3 py-1.5 rounded-full border ${
-                broadcastAudience === "vips"
-                  ? "bg-amber-500 border-amber-500"
-                  : "bg-gray-100 border-gray-200"
-              }`}
+              style={[
+                styles.audienceOption,
+                broadcastAudience === "vips" && { backgroundColor: C.amber, borderColor: C.amber },
+              ]}
             >
+              <Ionicons
+                name="star"
+                size={16}
+                color={broadcastAudience === "vips" ? C.white : C.amber}
+              />
               <Text
-                className={`text-xs font-bold ${
-                  broadcastAudience === "vips" ? "text-white" : "text-gray-700"
-                }`}
+                style={[
+                  styles.audienceOptionText,
+                  broadcastAudience === "vips" && { color: C.white, fontWeight: "800" },
+                ]}
               >
-                VIP Members Only
+                👑 VIP Only
               </Text>
             </TouchableOpacity>
           </View>
 
-          <Text className="text-xs font-bold text-gray-700 mb-1">Message Text:</Text>
-          <TextInput
-            multiline
-            numberOfLines={4}
-            className="bg-gray-50 border border-gray-300 rounded-xl p-3 text-xs text-gray-800 mb-3"
-            style={{ minHeight: 90, textAlignVertical: "top" }}
-            placeholder="Type your message here... e.g. Special treat for our customers! Enjoy flat 10% off today only."
-            value={customBroadcastMsg}
-            onChangeText={setCustomBroadcastMsg}
-          />
-
-          <TouchableOpacity
-            onPress={handleBroadcastToAllParties}
-            disabled={broadcasting}
-            className={`w-full py-3.5 rounded-xl flex-row items-center justify-center shadow-xs ${
-              broadcasting ? "bg-gray-400" : "bg-blue-600 active:bg-blue-700"
-            }`}
-          >
-            {broadcasting ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <>
-                <FontAwesome name="whatsapp" size={17} color="#FFFFFF" />
-                <Text className="text-white font-bold text-xs ml-2">
-                  Send Message to All {broadcastAudience === "vips" ? "VIP Customers" : "Parties"}
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
-
-        <View className="bg-white rounded-2xl p-4 mb-4 border border-gray-200 shadow-sm">
-          <View className="flex-row items-center justify-between mb-2">
-            <View className="flex-1 mr-2">
-              <Text className="text-xs font-bold text-gray-700 uppercase tracking-wider">
-                Store Catalogue PDF ({CATALOGUE_STYLES.length} Visual Styles)
-              </Text>
-              <Text className="text-[11px] text-gray-500 mt-0.5">
-                Generate and share professional product brochures on WhatsApp
+          {broadcastAudience === "vips" ? (
+            <View style={styles.vipNoticeBox}>
+              <Ionicons name="sparkles" size={16} color={C.amber} />
+              <Text style={styles.vipNoticeText}>
+                Targets all regular patrons, frequent repeat buyers, and customers with custom discounts.
               </Text>
             </View>
-            <View className="bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-              <Text className="text-[10px] text-emerald-700 font-bold">{CATALOGUE_STYLES.length} Themes</Text>
+          ) : (
+            <View style={[styles.vipNoticeBox, { backgroundColor: C.navyLight, borderColor: "#BFDBFE" }]}>
+              <Ionicons name="information-circle" size={16} color={C.navy} />
+              <Text style={[styles.vipNoticeText, { color: C.navy }]}>
+                Targets all registered parties and walk-in invoice customers with valid phone numbers.
+              </Text>
             </View>
-          </View>
+          )}
 
-          <Text className="text-xs font-bold text-gray-700 mb-2">
-            Choose Catalogue Theme:
-          </Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            className="flex-row mb-3"
-          >
-            {CATALOGUE_STYLES.map((cat) => (
+          {/* Template Quick Chips */}
+          <Text style={[styles.fieldLabel, { marginTop: 14 }]}>Quick Message Templates:</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+            {MARKETING_TEMPLATES.map((tmpl) => (
               <TouchableOpacity
-                key={cat.id}
-                onPress={() => setSelectedCatStyle(cat.id)}
-                style={{
-                  width: 145,
-                  borderColor: selectedCatStyle === cat.id ? cat.color : "#E5E7EB",
-                  borderWidth: selectedCatStyle === cat.id ? 2 : 1,
-                }}
-                className={`p-3 rounded-xl mr-2.5 ${
-                  selectedCatStyle === cat.id ? "bg-white shadow-xs" : "bg-gray-50"
-                }`}
+                key={tmpl.id}
+                onPress={() => handleApplyTemplate(tmpl)}
+                style={styles.templateChip}
               >
-                <View
-                  style={{ backgroundColor: cat.color }}
-                  className="w-full h-2 rounded-full mb-2"
-                />
-                <Text className="text-xs font-bold text-gray-900 mb-0.5" numberOfLines={1}>
-                  {cat.name}
-                </Text>
-                <Text className="text-[10px] text-gray-500 mb-2" numberOfLines={2}>
-                  {cat.description}
-                </Text>
-                <View className="bg-gray-200/80 px-1.5 py-0.5 rounded self-start">
-                  <Text className="text-[9px] font-bold text-gray-700">{cat.badge}</Text>
-                </View>
+                <Text style={styles.templateChipText}>{tmpl.title}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
 
-          <View className="bg-gray-50 border border-gray-200 rounded-xl p-3 mb-3 flex-row items-center justify-between">
-            <View className="flex-row items-center">
-              <Ionicons name="cube-outline" size={18} color="#4B5563" />
-              <Text className="text-xs font-bold text-gray-700 ml-2">
-                Items in Catalogue: {catalogues.length} products
-              </Text>
+          {/* Message Input */}
+          <Text style={styles.fieldLabel}>Your Broadcast Message:</Text>
+          <TextInput
+            multiline
+            numberOfLines={4}
+            style={styles.messageInput}
+            placeholder="Type your announcement, festival offer, or discount here..."
+            placeholderTextColor={C.slate400}
+            value={customBroadcastMsg}
+            onChangeText={setCustomBroadcastMsg}
+          />
+
+          {/* Send Broadcast Button */}
+          <TouchableOpacity
+            onPress={handleStartBroadcast}
+            disabled={broadcasting}
+            style={[styles.primaryButton, { backgroundColor: broadcasting ? C.slate400 : C.emerald }]}
+          >
+            {broadcasting ? (
+              <ActivityIndicator size="small" color={C.white} />
+            ) : (
+              <>
+                <FontAwesome5 name="whatsapp" size={18} color={C.white} />
+                <Text style={styles.primaryButtonText}>
+                  Launch Broadcast to {broadcastAudience === "vips" ? "VIP Members" : "All Customers"}
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
+          <Text style={styles.guaranteeNote}>
+            🛡️ Safe Multi-Customer Queue · No dropped messages · Sends to every customer
+          </Text>
+        </View>
+
+        {/* ── Card 2: Catalogue PDF Generator ── */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View style={[styles.iconCircle, { backgroundColor: C.emeraldLight }]}>
+              <Ionicons name="document-text" size={18} color={C.emerald} />
             </View>
-            <TouchableOpacity
-              onPress={loadMenuItems}
-              disabled={loadingItems}
-              className="bg-gray-200 px-2.5 py-1 rounded-lg"
-            >
-              <Text className="text-[11px] font-bold text-gray-700">Refresh Items</Text>
+            <View style={{ flex: 1, marginLeft: 10 }}>
+              <Text style={styles.cardTitle}>Product Catalogue PDF</Text>
+              <Text style={styles.cardSubtitle}>Share elegant product brochures directly to WhatsApp</Text>
+            </View>
+            <View style={[styles.badge, { backgroundColor: C.navyLight }]}>
+              <Text style={[styles.badgeText, { color: C.navy }]}>{CATALOGUE_STYLES.length} Themes</Text>
+            </View>
+          </View>
+
+          <Text style={styles.fieldLabel}>Select PDF Presentation Theme:</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+            {CATALOGUE_STYLES.map((cat) => {
+              const isSelected = selectedCatStyle === cat.id;
+              return (
+                <TouchableOpacity
+                  key={cat.id}
+                  onPress={() => setSelectedCatStyle(cat.id)}
+                  style={[
+                    styles.themeCard,
+                    isSelected && { borderColor: C.navy, borderWidth: 2, backgroundColor: C.navyLight },
+                  ]}
+                >
+                  <View style={{ backgroundColor: cat.color || C.navy, height: 4, borderRadius: 2, marginBottom: 6 }} />
+                  <Text style={[styles.themeCardTitle, isSelected && { color: C.navy, fontWeight: "800" }]}>
+                    {cat.name}
+                  </Text>
+                  <Text style={styles.themeCardDesc} numberOfLines={2}>
+                    {cat.description}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          <View style={styles.stockStatusRow}>
+            <Ionicons name="cube-outline" size={16} color={C.navy} />
+            <Text style={styles.stockStatusText}>
+              {loadingItems ? "Counting inventory..." : `${catalogues.length} active products ready in inventory`}
+            </Text>
+            <TouchableOpacity onPress={loadMenuItems} style={styles.refreshChip}>
+              <Text style={styles.refreshChipText}>Refresh</Text>
             </TouchableOpacity>
           </View>
 
           <TouchableOpacity
             onPress={handleShareCatalogue}
-            disabled={generatingCatalogue}
-            className="w-full bg-emerald-600 hover:bg-emerald-700 py-3.5 rounded-xl flex-row items-center justify-center shadow-xs"
+            disabled={generatingCatalogue || !catalogues.length}
+            style={[
+              styles.primaryButton,
+              { backgroundColor: catalogues.length ? C.navy : C.slate400, marginTop: 10 },
+            ]}
           >
             {generatingCatalogue ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
+              <ActivityIndicator size="small" color={C.white} />
             ) : (
               <>
-                <FontAwesome name="whatsapp" size={18} color="#FFFFFF" />
-                <Text className="text-white font-bold text-xs ml-2">
-                  Generate & Share Catalogue PDF
-                </Text>
+                <Ionicons name="share-social-outline" size={18} color={C.white} />
+                <Text style={styles.primaryButtonText}>Generate & Share Catalogue PDF</Text>
               </>
             )}
           </TouchableOpacity>
         </View>
-
-        <View className="bg-white rounded-2xl p-4 mb-4 border border-gray-200 shadow-sm">
-          <View className="flex-row items-center justify-between mb-2">
-            <Text className="text-xs font-bold text-gray-700 uppercase tracking-wider">
-              Ready-to-Send Marketing Messages
-            </Text>
-            <View className="bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">
-              <Text className="text-[10px] text-purple-700 font-bold">1-Tap WhatsApp</Text>
-            </View>
-          </View>
-          <Text className="text-xs text-gray-500 mb-3">
-            Pre-composed marketing campaigns to re-engage customers and drive store sales.
-          </Text>
-
-          <View className="gap-2.5">
-            {MARKETING_TEMPLATES.map((tmpl) => (
-              <View
-                key={tmpl.id}
-                className="p-3 rounded-xl bg-gray-50 border border-gray-200"
-              >
-                <View className="flex-row items-center justify-between mb-1">
-                  <Text className="text-xs font-bold text-gray-800">{tmpl.title}</Text>
-                  <View className="bg-purple-100 px-2 py-0.5 rounded">
-                    <Text className="text-[9.5px] font-bold text-purple-700">{tmpl.tag}</Text>
-                  </View>
-                </View>
-                <Text className="text-[11.5px] text-gray-600 leading-4 mb-2.5">
-                  {tmpl.message.replace(/\{STORE\}/g, user?.businessName || "Our Store")}
-                </Text>
-                <TouchableOpacity
-                  onPress={() => handleShareCampaign(tmpl)}
-                  className="bg-emerald-600 py-1.5 px-3 rounded-lg self-start flex-row items-center"
-                >
-                  <FontAwesome name="whatsapp" size={13} color="#FFFFFF" />
-                  <Text className="text-white text-[11px] font-bold ml-1.5">
-                    Share on WhatsApp
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            ))}
-          </View>
-        </View>
-
-        <View className="bg-white rounded-2xl p-4 mb-4 border border-gray-200 shadow-sm">
-          <View className="flex-row items-center justify-between mb-2">
-            <View className="flex-1 mr-2">
-              <Text className="text-xs font-bold text-gray-700 uppercase tracking-wider">
-                Counter & Table QR Flyer
-              </Text>
-              <Text className="text-[11px] text-gray-500 mt-0.5">
-                Printable standee flyer with your store's WhatsApp QR
-              </Text>
-            </View>
-            <View className="bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-              <Text className="text-[10px] text-amber-700 font-bold">Printable Standee</Text>
-            </View>
-          </View>
-
-          <Text className="text-xs text-gray-600 mb-3">
-            Place this flyer on your billing counter or dining tables. Customers can scan with their camera to get the digital menu and place instant orders directly on WhatsApp!
-          </Text>
-
-          <TouchableOpacity
-            onPress={() => setShowFlyerModal(true)}
-            className="bg-amber-500 hover:bg-amber-600 py-3 rounded-xl flex-row items-center justify-center shadow-xs"
-          >
-            <Ionicons name="qr-code-outline" size={17} color="#FFFFFF" />
-            <Text className="text-white font-bold text-xs ml-2">Preview Store QR Standee</Text>
-          </TouchableOpacity>
-        </View>
       </ScrollView>
 
-      <Modal visible={showFlyerModal} animationType="slide" transparent={true}>
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center", padding: 16 }}>
-          <View style={{ backgroundColor: "#FFFFFF", borderRadius: 20, width: "100%", maxWidth: 360, padding: 20, alignItems: "center" }}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", width: "100%", marginBottom: 12 }}>
-              <Text style={{ fontSize: 16, fontWeight: "800", color: "#111827" }}>Counter / Table Standee</Text>
-              <TouchableOpacity onPress={() => setShowFlyerModal(false)}>
-                <Ionicons name="close" size={22} color="#6B7280" />
+      {/* ── Fail-Safe Bulk Dispatcher Queue Modal ── */}
+      <Modal
+        visible={queueModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setQueueModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.queueModalCard}>
+            {/* Modal Header */}
+            <View style={styles.queueModalHeader}>
+              <View>
+                <Text style={styles.queueModalTitle}>Bulk Message Dispatcher</Text>
+                <Text style={styles.queueModalSubtitle}>
+                  Progress: {sentCount} of {totalRecipients} dispatched
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setQueueModalVisible(false)}
+                style={styles.modalCloseBtn}
+              >
+                <Ionicons name="close" size={20} color={C.slate600} />
               </TouchableOpacity>
             </View>
 
-            <View style={{ width: "100%", borderWidth: 2, borderColor: "#2563EB", borderRadius: 16, padding: 16, alignItems: "center", backgroundColor: "#EFF6FF" }}>
-              <Text style={{ fontSize: 16, fontWeight: "900", color: "#1E3A8A", textTransform: "uppercase", letterSpacing: 1 }}>
-                {user?.businessName || "OUR STORE"}
-              </Text>
-              <Text style={{ fontSize: 11, color: "#3B82F6", fontWeight: "600", marginTop: 2 }}>
-                Scan to Order on WhatsApp
-              </Text>
-
-              <View style={{ width: 140, height: 140, backgroundColor: "#FFFFFF", borderRadius: 12, padding: 8, marginVertical: 12, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#BFDBFE" }}>
-                <FontAwesome5 name="qrcode" size={110} color="#1E3A8A" />
-              </View>
-
-              <View style={{ backgroundColor: "#2563EB", paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, marginBottom: 8 }}>
-                <Text style={{ color: "#FFFFFF", fontSize: 11, fontWeight: "800" }}>{flyerTableNum}</Text>
-              </View>
-
-              <Text style={{ fontSize: 11, color: "#4B5563", textAlign: "center" }}>
-                Point camera at QR code ➔ Open WhatsApp ➔ Send 'Hi' to start!
-              </Text>
+            {/* Progress Bar */}
+            <View style={styles.progressBarTrack}>
+              <View
+                style={[
+                  styles.progressBarFill,
+                  { width: totalRecipients > 0 ? `${(sentCount / totalRecipients) * 100}%` : "0%" },
+                ]}
+              />
             </View>
 
-            <View style={{ flexDirection: "row", gap: 8, marginTop: 14, width: "100%" }}>
-              {["Table 1", "Counter", "Delivery"].map((lbl) => (
-                <TouchableOpacity
-                  key={lbl}
-                  onPress={() => setFlyerTableNum(lbl)}
-                  style={{
-                    flex: 1,
-                    paddingVertical: 6,
-                    borderRadius: 8,
-                    borderWidth: 1,
-                    alignItems: "center",
-                    backgroundColor: flyerTableNum === lbl ? "#2563EB" : "#F3F4F6",
-                    borderColor: flyerTableNum === lbl ? "#2563EB" : "#E5E7EB",
-                  }}
-                >
-                  <Text style={{ fontSize: 11, fontWeight: "700", color: flyerTableNum === lbl ? "#FFFFFF" : "#4B5563" }}>
-                    {lbl}
+            {/* Current Recipient Highlight Card */}
+            {currentRecipient ? (
+              <View style={styles.currentCard}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                  <Text style={styles.currentCardBadge}>
+                    CUSTOMER #{currentQueueIndex + 1} OF {totalRecipients}
                   </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+                  {currentRecipient.isVip && (
+                    <View style={styles.vipBadgeSmall}>
+                      <Text style={styles.vipBadgeSmallText}>👑 VIP</Text>
+                    </View>
+                  )}
+                </View>
 
-            <TouchableOpacity
-              onPress={() => {
-                setShowFlyerModal(false);
-                Alert.alert("Print Standee", "Use browser or mobile screenshot to print this counter QR standee card.");
+                <Text style={styles.currentCustomerName}>{currentRecipient.name}</Text>
+                <Text style={styles.currentCustomerPhone}>+91 {currentRecipient.phone}</Text>
+
+                <TouchableOpacity
+                  onPress={() => handleDispatchCustomer(currentQueueIndex)}
+                  style={styles.currentSendBtn}
+                >
+                  <FontAwesome5 name="whatsapp" size={18} color={C.white} />
+                  <Text style={styles.currentSendBtnText}>
+                    Send to {currentRecipient.name.split(" ")[0]} (WhatsApp)
+                  </Text>
+                  <Ionicons name="arrow-forward" size={18} color={C.white} />
+                </TouchableOpacity>
+
+                <View style={{ flexDirection: "row", justifyContent: "flex-end", marginTop: 8 }}>
+                  {currentQueueIndex + 1 < totalRecipients && (
+                    <TouchableOpacity
+                      onPress={() => setCurrentQueueIndex(currentQueueIndex + 1)}
+                      style={{ paddingHorizontal: 10, paddingVertical: 4 }}
+                    >
+                      <Text style={{ color: C.slate600, fontSize: 12, fontWeight: "600" }}>Skip to Next ➔</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            ) : (
+              <View style={[styles.currentCard, { alignItems: "center", paddingVertical: 24 }]}>
+                <Ionicons name="checkmark-circle" size={48} color={C.emerald} />
+                <Text style={{ fontSize: 16, fontWeight: "800", color: C.slate900, marginTop: 8 }}>
+                  All Recipients Completed!
+                </Text>
+                <Text style={{ fontSize: 12, color: C.slate600, marginTop: 4 }}>
+                  Every customer in the queue has been handled.
+                </Text>
+              </View>
+            )}
+
+            {/* All Recipients List */}
+            <Text style={[styles.fieldLabel, { marginTop: 14, marginBottom: 8 }]}>
+              Recipient Queue ({totalRecipients}):
+            </Text>
+            <FlatList
+              data={queueRecipients}
+              keyExtractor={(item) => item.phone}
+              style={{ maxHeight: 200 }}
+              renderItem={({ item, index }) => {
+                const isSent = Boolean(sentMap[item.phone]);
+                const isCurrent = index === currentQueueIndex;
+                return (
+                  <View
+                    style={[
+                      styles.queueRow,
+                      isCurrent && { borderColor: C.navy, backgroundColor: C.navyLight },
+                    ]}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center" }}>
+                        <Text style={styles.queueRowName}>{item.name}</Text>
+                        {item.isVip && <Text style={styles.queueVipTag}>VIP</Text>}
+                      </View>
+                      <Text style={styles.queueRowPhone}>+91 {item.phone}</Text>
+                    </View>
+
+                    {isSent ? (
+                      <View style={styles.sentBadge}>
+                        <Ionicons name="checkmark-done" size={14} color={C.emerald} />
+                        <Text style={styles.sentBadgeText}>Sent</Text>
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        onPress={() => {
+                          setCurrentQueueIndex(index);
+                          handleDispatchCustomer(index);
+                        }}
+                        style={styles.rowSendBtn}
+                      >
+                        <FontAwesome5 name="whatsapp" size={12} color={C.white} />
+                        <Text style={styles.rowSendBtnText}>Send</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                );
               }}
-              style={{ width: "100%", backgroundColor: "#2563EB", paddingVertical: 12, borderRadius: 12, alignItems: "center", marginTop: 14 }}
+            />
+
+            {/* Close Button */}
+            <TouchableOpacity
+              onPress={() => setQueueModalVisible(false)}
+              style={styles.doneBtn}
             >
-              <Text style={{ color: "#FFFFFF", fontWeight: "800", fontSize: 13 }}>Print Standee</Text>
+              <Text style={styles.doneBtnText}>Done / Close Queue</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -503,3 +600,388 @@ export default function MarketingScreen({ user, onOpenDrawer, onBack }) {
     </View>
   );
 }
+
+// ─── Stylesheet ────────────────────────────────────────────────────────
+const styles = StyleSheet.create({
+  header: {
+    backgroundColor: C.navyDark,
+    paddingHorizontal: 16,
+    paddingTop: 44,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.1)",
+  },
+  backBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.15)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    marginRight: 8,
+  },
+  headerTitle: {
+    color: C.white,
+    fontSize: 20,
+    fontWeight: "900",
+    letterSpacing: 0.3,
+  },
+  headerSubtitle: {
+    color: "rgba(255,255,255,0.7)",
+    fontSize: 11,
+    marginTop: 2,
+  },
+  card: {
+    backgroundColor: C.white,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: C.slate200,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 14,
+  },
+  iconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: C.slate900,
+  },
+  cardSubtitle: {
+    fontSize: 11,
+    color: C.slate600,
+    marginTop: 1,
+  },
+  badge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  badgeText: {
+    fontSize: 10,
+    fontWeight: "800",
+  },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: C.slate900,
+    marginBottom: 6,
+  },
+  audienceRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 8,
+  },
+  audienceOption: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: C.slate200,
+    backgroundColor: C.white,
+  },
+  audienceOptionText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: C.slate600,
+  },
+  vipNoticeBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: C.amberLight,
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 10,
+    gap: 8,
+  },
+  vipNoticeText: {
+    flex: 1,
+    fontSize: 11,
+    color: "#92400E",
+    fontWeight: "600",
+    lineHeight: 16,
+  },
+  templateChip: {
+    backgroundColor: C.slate100,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: C.slate200,
+  },
+  templateChipText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: C.slate700 || "#334155",
+  },
+  messageInput: {
+    backgroundColor: C.slate50,
+    borderWidth: 1,
+    borderColor: C.slate200,
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 13,
+    color: C.slate900,
+    textAlignVertical: "top",
+    minHeight: 90,
+    marginBottom: 14,
+  },
+  primaryButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 13,
+    borderRadius: 12,
+  },
+  primaryButtonText: {
+    color: C.white,
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  guaranteeNote: {
+    fontSize: 10,
+    color: C.slate600,
+    textAlign: "center",
+    marginTop: 8,
+    fontWeight: "600",
+  },
+  themeCard: {
+    width: 130,
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: C.slate200,
+    backgroundColor: C.white,
+    marginRight: 8,
+  },
+  themeCardTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: C.slate900,
+  },
+  themeCardDesc: {
+    fontSize: 9,
+    color: C.slate600,
+    marginTop: 2,
+  },
+  stockStatusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: C.slate100,
+    padding: 10,
+    borderRadius: 10,
+    marginVertical: 8,
+  },
+  stockStatusText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "600",
+    color: C.slate900,
+    marginLeft: 6,
+  },
+  refreshChip: {
+    backgroundColor: C.white,
+    borderWidth: 1,
+    borderColor: C.slate200,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  refreshChipText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: C.navy,
+  },
+
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.65)",
+    justifyContent: "center",
+    padding: 16,
+  },
+  queueModalCard: {
+    backgroundColor: C.white,
+    borderRadius: 20,
+    padding: 18,
+    maxHeight: "85%",
+  },
+  queueModalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  queueModalTitle: {
+    fontSize: 18,
+    fontWeight: "900",
+    color: C.slate900,
+  },
+  queueModalSubtitle: {
+    fontSize: 11,
+    color: C.slate600,
+    marginTop: 2,
+  },
+  modalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: C.slate100,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  progressBarTrack: {
+    height: 6,
+    backgroundColor: C.slate100,
+    borderRadius: 3,
+    overflow: "hidden",
+    marginBottom: 14,
+  },
+  progressBarFill: {
+    height: 6,
+    backgroundColor: C.emerald,
+    borderRadius: 3,
+  },
+  currentCard: {
+    backgroundColor: C.slate50,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: C.emerald,
+    padding: 14,
+  },
+  currentCardBadge: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: C.emerald,
+    letterSpacing: 0.5,
+  },
+  vipBadgeSmall: {
+    backgroundColor: C.amberLight,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  vipBadgeSmallText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#92400E",
+  },
+  currentCustomerName: {
+    fontSize: 17,
+    fontWeight: "900",
+    color: C.slate900,
+    marginTop: 6,
+  },
+  currentCustomerPhone: {
+    fontSize: 13,
+    color: C.slate600,
+    marginTop: 1,
+    marginBottom: 12,
+  },
+  currentSendBtn: {
+    backgroundColor: C.emerald,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 10,
+  },
+  currentSendBtnText: {
+    color: C.white,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  queueRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: C.slate200,
+    backgroundColor: C.white,
+    marginBottom: 6,
+  },
+  queueRowName: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: C.slate900,
+  },
+  queueVipTag: {
+    backgroundColor: C.amberLight,
+    color: "#92400E",
+    fontSize: 9,
+    fontWeight: "800",
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+    marginLeft: 6,
+  },
+  queueRowPhone: {
+    fontSize: 11,
+    color: C.slate600,
+    marginTop: 1,
+  },
+  sentBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: C.emeraldLight,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  sentBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: C.emerald,
+  },
+  rowSendBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: C.emerald,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  rowSendBtnText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: C.white,
+  },
+  doneBtn: {
+    backgroundColor: C.slate100,
+    paddingVertical: 11,
+    borderRadius: 10,
+    alignItems: "center",
+    marginTop: 12,
+  },
+  doneBtnText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: C.slate900,
+  },
+});

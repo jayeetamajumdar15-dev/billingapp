@@ -258,5 +258,6 @@ export const api = {
     getInventoryCsvUrl: () => `${currentBaseUrl}/reports/inventory/csv`,
     getPartiesPdfUrl: () => `${currentBaseUrl}/reports/parties/pdf`,
     getPartiesCsvUrl: () => `${currentBaseUrl}/reports/parties/csv`,
+    getTopItems: (days = 7) => request(`/reports/top-items?days=${days}`),
   },
 };

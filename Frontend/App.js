@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
-import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
+import { View, Text, TouchableOpacity, ActivityIndicator, BackHandler, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import "./global.css";
 import { api, setAuthToken, getStoredSession, getAuthToken, clearAuthToken } from "./src/config/api";
@@ -22,6 +22,7 @@ import {
   openApkDownload,
 } from "./src/services/updateService";
 import UpdateModal from "./src/components/UpdateModal";
+import Toast from "react-native-toast-message";
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState("loading");
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -65,6 +66,47 @@ export default function App() {
     };
     checkUpdates();
   }, []);
+  useEffect(() => {
+    const backAction = () => {
+      // If drawer is open, close it
+      if (drawerVisible) {
+        setDrawerVisible(false);
+        return true;
+      }
+      // If creating invoice, go back to dashboard
+      if (isCreatingInvoice) {
+        setIsCreatingInvoice(false);
+        setActiveTab("dashboard");
+        return true;
+      }
+      // If on a non-dashboard tab, go back to dashboard
+      if (currentScreen === "main" && activeTab !== "dashboard") {
+        setActiveTab("dashboard");
+        return true;
+      }
+      // If on login/register screen, go to welcome
+      if (currentScreen === "login" || currentScreen === "register") {
+        setCurrentScreen("welcome");
+        return true;
+      }
+      // On dashboard (home) — ask to exit
+      if (currentScreen === "main" && activeTab === "dashboard") {
+        Alert.alert(
+          "Exit App",
+          "Do you want to exit the billing app?",
+          [
+            { text: "Cancel", style: "cancel", onPress: () => null },
+            { text: "Exit", style: "destructive", onPress: () => BackHandler.exitApp() },
+          ]
+        );
+        return true;
+      }
+      return false;
+    };
+    const backHandler = BackHandler.addEventListener("hardwareBackPress", backAction);
+    return () => backHandler.remove();
+  }, [drawerVisible, isCreatingInvoice, currentScreen, activeTab]);
+
   const handleLoginSuccess = (userData) => {
     setUser(userData);
     setAuthToken(getAuthToken(), userData);
@@ -260,6 +302,7 @@ export default function App() {
         }}
         onDismiss={() => setShowUpdateModal(false)}
       />
+      <Toast />
     </SafeAreaProvider>
   );
 }

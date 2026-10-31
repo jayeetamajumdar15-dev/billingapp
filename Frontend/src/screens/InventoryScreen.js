@@ -225,6 +225,34 @@ export default function InventoryScreen({ onOpenDrawer, onBack }) {
     setModalVisible(true);
   };
 
+  const handleDeleteItem = async (item) => {
+    if (!item || !item._id) return;
+    Alert.alert(
+      "Delete Item",
+      `Are you sure you want to delete "${item.name}"? This cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const res = await api.items.delete(item._id);
+              if (res && res.success) {
+                loadItems();
+                Alert.alert("Deleted", `"${item.name}" has been removed from inventory.`);
+              } else {
+                Alert.alert("Error", res?.message || "Failed to delete item");
+              }
+            } catch (e) {
+              Alert.alert("Error", e.message || "Failed to delete item");
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleSaveItem = async () => {
     if (!formName.trim() || !formSellingPrice.trim()) {
       Alert.alert("Required Fields", "Please enter Item Name and Selling Price");
@@ -487,9 +515,15 @@ export default function InventoryScreen({ onOpenDrawer, onBack }) {
 
                   <TouchableOpacity
                     onPress={() => handleOpenEdit(item)}
-                    className="bg-blue-50 border border-blue-200 w-9 h-9 rounded-lg items-center justify-center"
+                    className="bg-blue-50 border border-blue-200 w-9 h-9 rounded-lg items-center justify-center mr-2"
                   >
                     <Ionicons name="pencil" size={16} color="#2563EB" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => handleDeleteItem(item)}
+                    className="bg-red-50 border border-red-200 w-9 h-9 rounded-lg items-center justify-center"
+                  >
+                    <Ionicons name="trash" size={16} color="#DC2626" />
                   </TouchableOpacity>
                 </View>
               </View>

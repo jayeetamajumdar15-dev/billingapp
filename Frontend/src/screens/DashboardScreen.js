@@ -11,6 +11,7 @@ import {
   Modal,
   Alert,
   Linking,
+  Platform,
 } from "react-native";
 import {
   Ionicons,
@@ -32,6 +33,8 @@ export default function DashboardScreen({
   const [refreshing, setRefreshing] = useState(false);
   const [showBtGuide, setShowBtGuide] = useState(false);
   const [testingPrinter, setTestingPrinter] = useState(false);
+  const [selectedBill, setSelectedBill] = useState(null);
+  const [billLoading, setBillLoading] = useState(false);
   const [printerPaperSize, setPrinterPaperSize] = useState("2inch");
   const fetchDashboardData = async () => {
     setLoading(true);
@@ -234,9 +237,26 @@ export default function DashboardScreen({
           </TouchableOpacity>
         ) : (
           recentTransactions.map((tx) => (
-            <View
+            <TouchableOpacity
               key={tx._id}
-              className="bg-white rounded-xl p-3.5 mb-2.5 border border-gray-200 shadow-sm flex-row items-center justify-between"
+              activeOpacity={0.8}
+              onPress={async () => {
+                setBillLoading(true);
+                try {
+                  const res = await api.invoices.getOne(tx._id);
+                  if (res && res.success && res.invoice) {
+                    setSelectedBill(res.invoice);
+                  } else {
+                    // fallback to tx data if full invoice not available
+                    setSelectedBill(tx);
+                  }
+                } catch {
+                  setSelectedBill(tx);
+                } finally {
+                  setBillLoading(false);
+                }
+              }}
+              className="bg-white rounded-xl p-3.5 mb-2.5 border border-gray-200 shadow-sm flex-row items-center justify-between active:bg-blue-50"
             >
               <View className="flex-1 pr-2">
                 <View className="flex-row items-center">
@@ -280,6 +300,7 @@ export default function DashboardScreen({
                       {tx.paymentMode}
                     </Text>
                   </View>
+                  <Text className="text-[10px] text-blue-500 font-bold">Tap to view bill →</Text>
                 </View>
               </View>
               <View className="items-end">
@@ -287,7 +308,8 @@ export default function DashboardScreen({
                   Rs. {tx.grandTotal}
                 </Text>
                 <TouchableOpacity
-                  onPress={async () => {
+                  onPress={async (e) => {
+                    e.stopPropagation && e.stopPropagation();
                     await shareBackendPdf(tx, `Invoice_${tx.invoiceNumber || tx._id}.pdf`);
                   }}
                   className="bg-emerald-50 border border-emerald-300 px-2 py-1 rounded-lg flex-row items-center active:bg-emerald-100"
@@ -296,7 +318,7 @@ export default function DashboardScreen({
                   <Text className="text-emerald-800 text-[10px] font-bold ml-1">Share Bill</Text>
                 </TouchableOpacity>
               </View>
-            </View>
+            </TouchableOpacity>
           ))
         )}
       </ScrollView>
@@ -315,6 +337,106 @@ export default function DashboardScreen({
           </Text>
         </TouchableOpacity>
       </View>
+      {/* Bill loading overlay */}
+      {billLoading && (
+        <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.3)", justifyContent: "center", alignItems: "center", zIndex: 999 }}>
+          <View style={{ backgroundColor: "#FFFFFF", borderRadius: 16, padding: 24, alignItems: "center" }}>
+            <ActivityIndicator size="large" color="#2563EB" />
+            <Text style={{ marginTop: 10, fontWeight: "bold", color: "#374151" }}>Loading Bill...</Text>
+          </View>
+        </View>
+      )}
+
+      {/* Bill Detail Modal */}
+      <Modal visible={!!selectedBill} animationType="slide" transparent={true} onRequestClose={() => setSelectedBill(null)}>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" }}>
+          <View style={{ backgroundColor: "#FFFFFF", borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: "88%" }}>
+            {/* Header */}
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 18, borderBottomWidth: 1, borderBottomColor: "#F3F4F6" }}>
+              <View>
+                <Text style={{ fontSize: 16, fontWeight: "900", color: "#111827" }}>Bill #{selectedBill?.invoiceNumber}</Text>
+                <Text style={{ fontSize: 11, color: "#6B7280", marginTop: 2 }}>
+                  {selectedBill?.invoiceDate ? new Date(selectedBill.invoiceDate).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : ""}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setSelectedBill(null)} style={{ padding: 6 }}>
+                <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
+              {/* Customer Info */}
+              {selectedBill?.partyName ? (
+                <View style={{ backgroundColor: "#EFF6FF", borderRadius: 12, padding: 12, marginBottom: 12, flexDirection: "row", alignItems: "center" }}>
+                  <Ionicons name="person-circle-outline" size={20} color="#2563EB" />
+                  <View style={{ marginLeft: 8 }}>
+                    <Text style={{ fontWeight: "800", color: "#1E40AF", fontSize: 13 }}>{selectedBill.partyName}</Text>
+                    {selectedBill.partyPhone ? <Text style={{ color: "#3B82F6", fontSize: 11 }}>{selectedBill.partyPhone}</Text> : null}
+                  </View>
+                </View>
+              ) : null}
+
+              {/* Items Table */}
+              <View style={{ backgroundColor: "#F9FAFB", borderRadius: 12, overflow: "hidden", marginBottom: 12, borderWidth: 1, borderColor: "#E5E7EB" }}>
+                <View style={{ flexDirection: "row", backgroundColor: "#2563EB", paddingHorizontal: 12, paddingVertical: 8 }}>
+                  <Text style={{ flex: 3, color: "#FFFFFF", fontSize: 11, fontWeight: "800" }}>Item</Text>
+                  <Text style={{ flex: 1, color: "#FFFFFF", fontSize: 11, fontWeight: "800", textAlign: "center" }}>Qty</Text>
+                  <Text style={{ flex: 1.5, color: "#FFFFFF", fontSize: 11, fontWeight: "800", textAlign: "right" }}>Amount</Text>
+                </View>
+                {(selectedBill?.items || []).map((it, idx) => (
+                  <View key={idx} style={{ flexDirection: "row", paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#F3F4F6", backgroundColor: idx % 2 === 0 ? "#FFFFFF" : "#F9FAFB" }}>
+                    <Text style={{ flex: 3, fontSize: 12, color: "#111827", fontWeight: "600" }} numberOfLines={2}>{it.name || it.itemName}</Text>
+                    <Text style={{ flex: 1, fontSize: 12, color: "#374151", textAlign: "center" }}>{it.quantity || it.qty || 1}</Text>
+                    <Text style={{ flex: 1.5, fontSize: 12, color: "#111827", fontWeight: "700", textAlign: "right" }}>Rs. {Number(it.total || it.amount || (it.sellingPrice * (it.quantity || 1)) || 0).toLocaleString("en-IN")}</Text>
+                  </View>
+                ))}
+              </View>
+
+              {/* Totals */}
+              <View style={{ backgroundColor: "#F9FAFB", borderRadius: 12, padding: 14, borderWidth: 1, borderColor: "#E5E7EB", marginBottom: 16 }}>
+                {selectedBill?.subtotal ? (
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                    <Text style={{ color: "#6B7280", fontSize: 12 }}>Subtotal</Text>
+                    <Text style={{ color: "#374151", fontWeight: "600", fontSize: 12 }}>Rs. {Number(selectedBill.subtotal || 0).toLocaleString("en-IN")}</Text>
+                  </View>
+                ) : null}
+                {selectedBill?.discountTotal > 0 ? (
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                    <Text style={{ color: "#059669", fontSize: 12 }}>Discount</Text>
+                    <Text style={{ color: "#059669", fontWeight: "600", fontSize: 12 }}>- Rs. {Number(selectedBill.discountTotal || 0).toLocaleString("en-IN")}</Text>
+                  </View>
+                ) : null}
+                {selectedBill?.taxTotal > 0 ? (
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                    <Text style={{ color: "#6B7280", fontSize: 12 }}>GST / Tax</Text>
+                    <Text style={{ color: "#374151", fontWeight: "600", fontSize: 12 }}>Rs. {Number(selectedBill.taxTotal || 0).toLocaleString("en-IN")}</Text>
+                  </View>
+                ) : null}
+                <View style={{ flexDirection: "row", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: "#E5E7EB", paddingTop: 10, marginTop: 4 }}>
+                  <Text style={{ color: "#111827", fontSize: 15, fontWeight: "900" }}>Total</Text>
+                  <Text style={{ color: "#2563EB", fontSize: 15, fontWeight: "900" }}>Rs. {Number(selectedBill?.grandTotal || 0).toLocaleString("en-IN")}</Text>
+                </View>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 8 }}>
+                  <Text style={{ color: "#6B7280", fontSize: 11 }}>Payment</Text>
+                  <Text style={{ color: "#374151", fontSize: 11, fontWeight: "700" }}>{selectedBill?.paymentMode || "CASH"}</Text>
+                </View>
+              </View>
+
+              {/* Share Button */}
+              <TouchableOpacity
+                onPress={async () => {
+                  if (selectedBill) await shareBackendPdf(selectedBill, `Invoice_${selectedBill.invoiceNumber || selectedBill._id}.pdf`);
+                }}
+                style={{ backgroundColor: "#25D366", borderRadius: 14, paddingVertical: 14, flexDirection: "row", alignItems: "center", justifyContent: "center" }}
+              >
+                <FontAwesome5 name="whatsapp" size={16} color="#FFFFFF" />
+                <Text style={{ color: "#FFFFFF", fontWeight: "800", fontSize: 14, marginLeft: 8 }}>Share Bill on WhatsApp</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       <Modal visible={showBtGuide} animationType="slide" transparent={true}>
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" }}>
           <View style={{ backgroundColor: "#FFFFFF", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20 }}>
