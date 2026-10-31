@@ -17,7 +17,7 @@ import { api } from "../config/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { shareBillAsPdf, shareBackendPdf, printBill } from "../utils/receiptPdfGenerator";
 
-export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
+export default function InvoiceScreen({ user, onBack, onInvoiceSaved, editingInvoice }) {
   // Step 1: "items" (first select items) | Step 2: "invoice" (customer & payment)
   const [currentStep, setCurrentStep] = useState("items");
 
@@ -77,6 +77,41 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
     loadPartiesAndItems();
     loadBillFormat();
   }, []);
+
+  useEffect(() => {
+    if (editingInvoice) {
+      if (editingInvoice.items && Array.isArray(editingInvoice.items)) {
+        setCart(
+          editingInvoice.items.map((it) => ({
+            _id: it.itemId || it._id,
+            name: it.name,
+            barcode: it.barcode || "",
+            sellingPrice: it.sellingPrice || 0,
+            quantity: it.quantity || 1,
+            unit: it.unit || "PCS",
+            taxRate: it.taxRate || 0,
+          }))
+        );
+      }
+      if (editingInvoice.partyName) setCustomerName(editingInvoice.partyName);
+      if (editingInvoice.partyPhone) setCustomerPhone(editingInvoice.partyPhone);
+      if (editingInvoice.paymentMode) setPaymentMode(editingInvoice.paymentMode);
+      if (editingInvoice.cashAmount !== undefined && editingInvoice.cashAmount !== null) {
+        setCashAmount(String(editingInvoice.cashAmount));
+      }
+      if (editingInvoice.upiAmount !== undefined && editingInvoice.upiAmount !== null) {
+        setUpiAmount(String(editingInvoice.upiAmount));
+      }
+      if (editingInvoice.regularDiscountAppliedPercent !== undefined && editingInvoice.regularDiscountAppliedPercent !== null) {
+        setCustomDiscount(String(editingInvoice.regularDiscountAppliedPercent));
+      } else if (editingInvoice.discountPercent !== undefined && editingInvoice.discountPercent !== null) {
+        setCustomDiscount(String(editingInvoice.discountPercent));
+      }
+      if (editingInvoice.freebieItemGiven) {
+        setCustomFreebie(editingInvoice.freebieItemGiven);
+      }
+    }
+  }, [editingInvoice]);
 
   const loadBillFormat = async () => {
     try {
@@ -284,7 +319,9 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
       })),
     };
 
-    const res = await api.invoices.create(payload);
+    const res = editingInvoice?._id
+      ? await api.invoices.update(editingInvoice._id, payload)
+      : await api.invoices.create(payload);
     setLoading(false);
 
     if (res.success && res.invoice) {
@@ -420,7 +457,11 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
           </TouchableOpacity>
           <View>
             <Text className="text-white text-lg font-bold">
-              {currentStep === "items" ? "1. Select Items" : "2. Finalize Invoice"}
+              {editingInvoice
+                ? `Edit Bill #${editingInvoice.invoiceNumber}`
+                : currentStep === "items"
+                ? "1. Select Items"
+                : "2. Finalize Invoice"}
             </Text>
             <Text className="text-blue-100 text-[11px]">
               {currentStep === "items"
@@ -943,7 +984,7 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved }) {
               <View className="flex-row items-center">
                 <Ionicons name="checkmark-done-circle" size={20} color="#FFFFFF" />
                 <Text className="text-white font-bold text-base ml-2">
-                  Generate & Save Invoice (Rs. {grandTotal})
+                  {editingInvoice ? "Update & Save Invoice" : "Generate & Save Invoice"} (Rs. {grandTotal})
                 </Text>
               </View>
             )}

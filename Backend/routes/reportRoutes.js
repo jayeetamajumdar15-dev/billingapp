@@ -216,11 +216,11 @@ router.get("/parties/csv", async (req, res) => {
   }
 });
 
-// Top selling items per day
+// Top selling items per day (supports 7, 30, 365 days / yearly)
 router.get("/top-items", async (req, res) => {
   try {
     const userId = req.user._id;
-    const days = parseInt(req.query.days) || 7;
+    const days = parseInt(req.query.days) || 365;
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
     startDate.setHours(0, 0, 0, 0);
@@ -282,11 +282,215 @@ router.get("/top-items", async (req, res) => {
       },
     ]);
 
-    return res.status(200).json({ success: true, data: results });
+    // Also get overall yearly top items
+    const overallTop = await Invoice.aggregate([
+      {
+        $match: {
+          userId,
+          createdAt: { $gte: startDate },
+        },
+      },
+      { $unwind: "$items" },
+      {
+        $group: {
+          _id: { $ifNull: ["$items.name", "$items.itemName"] },
+          totalQty: { $sum: { $ifNull: ["$items.quantity", "$items.qty", 1] } },
+          totalRevenue: {
+            $sum: {
+              $ifNull: [
+                "$items.total",
+                "$items.amount",
+                {
+                  $multiply: [
+                    { $ifNull: ["$items.sellingPrice", "$items.rate", 0] },
+                    { $ifNull: ["$items.quantity", "$items.qty", 1] },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      },
+      { $sort: { totalQty: -1, totalRevenue: -1 } },
+      { $limit: 20 },
+      {
+        $project: {
+          name: "$_id",
+          totalQty: 1,
+          totalRevenue: 1,
+          _id: 0,
+        },
+      },
+    ]);
+
+    return res.status(200).json({ success: true, data: results, overallTop });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Category-wise selling per day for the whole year
+router.get("/category-sales", async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const days = parseInt(req.query.days) || 365;
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    startDate.setHours(0, 0, 0, 0);
+
+    const dailyResults = await Invoice.aggregate([
+      {
+        $match: {
+          userId,
+          createdAt: { $gte: startDate },
+        },
+      },
+      { $unwind: "$items" },
+      {
+        $lookup: {
+          from: "items",
+          localField: "items.itemId",
+          foreignField: "_id",
+          as: "itemDoc",
+        },
+      },
+      {
+        $addFields: {
+          categoryName: {
+            $ifNull: [
+              { $arrayElemAt: ["$itemDoc.category", 0] },
+              { $ifNull: ["$items.category", "General"] },
+            ],
+          },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            date: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+            category: "$categoryName",
+          },
+          totalQty: { $sum: { $ifNull: ["$items.quantity", "$items.qty", 1] } },
+          totalRevenue: {
+            $sum: {
+              $ifNull: [
+                "$items.total",
+                "$items.amount",
+                {
+                  $multiply: [
+                    { $ifNull: ["$items.sellingPrice", "$items.rate", 0] },
+                    { $ifNull: ["$items.quantity", "$items.qty", 1] },
+                  ],
+                },
+              ],
+            },
+          },
+          items: {
+            $push: {
+              name: { $ifNull: ["$items.name", "$items.itemName"] },
+              qty: { $ifNull: ["$items.quantity", "$items.qty", 1] },
+              price: { $ifNull: ["$items.sellingPrice", "$items.rate", 0] },
+              total: { $ifNull: ["$items.total", "$items.amount", 0] },
+            },
+          },
+        },
+      },
+      { $sort: { "_id.date": -1, totalRevenue: -1 } },
+      {
+        $group: {
+          _id: "$_id.date",
+          categories: {
+            $push: {
+              category: "$_id.category",
+              totalQty: "$totalQty",
+              totalRevenue: "$totalRevenue",
+              items: "$items",
+            },
+          },
+          dayTotalRevenue: { $sum: "$totalRevenue" },
+          dayTotalQty: { $sum: "$totalQty" },
+        },
+      },
+      { $sort: { _id: -1 } },
+      {
+        $project: {
+          date: "$_id",
+          categories: 1,
+          dayTotalRevenue: 1,
+          dayTotalQty: 1,
+          _id: 0,
+        },
+      },
+    ]);
+
+    // Yearly summary by category
+    const yearlyCategorySummary = await Invoice.aggregate([
+      {
+        $match: {
+          userId,
+          createdAt: { $gte: startDate },
+        },
+      },
+      { $unwind: "$items" },
+      {
+        $lookup: {
+          from: "items",
+          localField: "items.itemId",
+          foreignField: "_id",
+          as: "itemDoc",
+        },
+      },
+      {
+        $addFields: {
+          categoryName: {
+            $ifNull: [
+              { $arrayElemAt: ["$itemDoc.category", 0] },
+              { $ifNull: ["$items.category", "General"] },
+            ],
+          },
+        },
+      },
+      {
+        $group: {
+          _id: "$categoryName",
+          totalQty: { $sum: { $ifNull: ["$items.quantity", "$items.qty", 1] } },
+          totalRevenue: {
+            $sum: {
+              $ifNull: [
+                "$items.total",
+                "$items.amount",
+                {
+                  $multiply: [
+                    { $ifNull: ["$items.sellingPrice", "$items.rate", 0] },
+                    { $ifNull: ["$items.quantity", "$items.qty", 1] },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      },
+      { $sort: { totalRevenue: -1 } },
+      {
+        $project: {
+          category: "$_id",
+          totalQty: 1,
+          totalRevenue: 1,
+          _id: 0,
+        },
+      },
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: dailyResults,
+      yearlyCategorySummary,
+    });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
   }
 });
 
 export default router;
+
 

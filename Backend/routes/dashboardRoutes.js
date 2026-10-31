@@ -32,11 +32,17 @@ router.get("/stats", async (req, res) => {
         .select("grandTotal paymentMode")
         .lean(),
 
-      Invoice.find({ userId })
+      Invoice.find({
+        userId,
+        $or: [
+          { invoiceDate: { $gte: startOfToday, $lte: endOfToday } },
+          { createdAt: { $gte: startOfToday, $lte: endOfToday } },
+        ],
+      })
         .sort({ invoiceDate: -1, createdAt: -1 })
-        .limit(10)
+        .limit(50)
         .select(
-          "invoiceNumber partyName partyPhone paymentMode grandTotal invoiceDate isRegularCustomer"
+          "invoiceNumber partyName partyPhone paymentMode grandTotal subtotal discountTotal taxTotal roundOff items notes invoiceDate createdAt isRegularCustomer"
         )
         .lean(),
 

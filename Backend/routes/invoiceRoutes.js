@@ -487,19 +487,32 @@ router.post("/", async (req, res) => {
     const lovedUrl = `https://wa.me/${feedbackStorePhone}?text=${encodeURIComponent(`Loved it! ⭐️ Fantastic experience with Order #${invoiceNumStr}`)}`;
     const okayUrl = `https://wa.me/${feedbackStorePhone}?text=${encodeURIComponent(`Okay 👍 Order #${invoiceNumStr} was fine`)}`;
     const needsImpUrl = `https://wa.me/${feedbackStorePhone}?text=${encodeURIComponent(`Needs Improvement 👎 Feedback for Order #${invoiceNumStr}`)}`;
+    const discountLine = (invoice.discountTotal > 0 || invoice.regularDiscountAmount > 0)
+      ? `🎉 Discount: -Rs.${((invoice.discountTotal || 0) + (invoice.regularDiscountAmount || 0)).toFixed(0)}\n`
+      : "";
+    const freebieLine = invoice.freebieItemGiven
+      ? `🎁 Complimentary Gift: ${invoice.freebieItemGiven}\n`
+      : "";
     const whatsappText =
       `Dear Customer,\n\n` +
-      `Thank you for your recent order at *${storeTitle}*!\n` +
-      `Your invoice is now available. 🪄\n\n` +
-      `💰 Amount : *Rs.${amountVal}*\n` +
-      `📅 Date : ${petpoojaDate}\n` +
-      `🔗 View Invoice : ${publicPdfUrl}\n\n` +
-      `How was your experience with your order at *${storeTitle}* today?\n` +
-      `_Tap to reply automatically in 1 click:_\n\n` +
+      `Thank you for your order at *${storeTitle}*!\n\n` +
+      `📋 *Bill No:* #${invoiceNumStr}\n` +
+      `📅 *Date & Time:* ${petpoojaDate}\n` +
+      `👤 *Customer:* ${invoice.partyName || "Customer"}\n` +
+      `💳 *Payment:* ${invoice.paymentMode || "CASH"}\n\n` +
+      `🛒 *ORDER DETAILS:*\n` +
+      `${itemsSummary}\n\n` +
+      `💵 *Subtotal:* Rs.${Number(invoice.subtotal || invoice.grandTotal).toFixed(0)}\n` +
+      discountLine +
+      freebieLine +
+      `💰 *Grand Total:* *Rs.${amountVal}*\n\n` +
+      `🔗 *View Full Bill Online:*\n${publicPdfUrl}\n\n` +
+      `How was your experience with *${storeTitle}* today?\n` +
+      `_Tap to reply automatically in 1 click:_\n` +
       `🌟 *Loved it!* ➔ ${lovedUrl}\n` +
       `👍 *Okay* ➔ ${okayUrl}\n` +
       `👎 *Needs Improvement* ➔ ${needsImpUrl}\n\n` +
-      `_Thank you! Have a wonderful day._ ✨`;
+      `_Thank you! Visit again._ ✨`;
     let pdfBuffer = null;
     try {
       pdfBuffer = await generateInvoicePdfBuffer(invoice, business);
@@ -579,19 +592,32 @@ router.post("/:id/send-whatsapp", async (req, res) => {
     const lovedUrl = `https://wa.me/${feedbackStorePhone}?text=${encodeURIComponent(`Loved it! ⭐️ Fantastic experience with Order #${invoiceNumStr}`)}`;
     const okayUrl = `https://wa.me/${feedbackStorePhone}?text=${encodeURIComponent(`Okay 👍 Order #${invoiceNumStr} was fine`)}`;
     const needsImpUrl = `https://wa.me/${feedbackStorePhone}?text=${encodeURIComponent(`Needs Improvement 👎 Feedback for Order #${invoiceNumStr}`)}`;
+    const discountLine = (invoice.discountTotal > 0 || invoice.regularDiscountAmount > 0)
+      ? `🎉 Discount: -Rs.${((invoice.discountTotal || 0) + (invoice.regularDiscountAmount || 0)).toFixed(0)}\n`
+      : "";
+    const freebieLine = invoice.freebieItemGiven
+      ? `🎁 Complimentary Gift: ${invoice.freebieItemGiven}\n`
+      : "";
     const whatsappText =
       `Dear Customer,\n\n` +
-      `Thank you for your recent order at *${storeTitle}*!\n` +
-      `Your invoice is now available. 🪄\n\n` +
-      `💰 Amount : *Rs.${amountVal}*\n` +
-      `📅 Date : ${petpoojaDate}\n` +
-      `🔗 View Invoice : ${publicPdfUrl}\n\n` +
-      `How was your experience with your order at *${storeTitle}* today?\n` +
-      `_Tap to reply automatically in 1 click:_\n\n` +
+      `Thank you for your order at *${storeTitle}*!\n\n` +
+      `📋 *Bill No:* #${invoiceNumStr}\n` +
+      `📅 *Date & Time:* ${petpoojaDate}\n` +
+      `👤 *Customer:* ${invoice.partyName || "Customer"}\n` +
+      `💳 *Payment:* ${invoice.paymentMode || "CASH"}\n\n` +
+      `🛒 *ORDER DETAILS:*\n` +
+      `${itemsSummary}\n\n` +
+      `💵 *Subtotal:* Rs.${Number(invoice.subtotal || invoice.grandTotal).toFixed(0)}\n` +
+      discountLine +
+      freebieLine +
+      `💰 *Grand Total:* *Rs.${amountVal}*\n\n` +
+      `🔗 *View Full Bill Online:*\n${publicPdfUrl}\n\n` +
+      `How was your experience with *${storeTitle}* today?\n` +
+      `_Tap to reply automatically in 1 click:_\n` +
       `🌟 *Loved it!* ➔ ${lovedUrl}\n` +
       `👍 *Okay* ➔ ${okayUrl}\n` +
       `👎 *Needs Improvement* ➔ ${needsImpUrl}\n\n` +
-      `_Thank you! Have a wonderful day._ ✨`;
+      `_Thank you! Visit again._ ✨`;
     let pdfBuffer = null;
     try {
       pdfBuffer = await generateInvoicePdfBuffer(invoice, business);
@@ -624,6 +650,234 @@ router.post("/:id/send-whatsapp", async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 });
+router.put("/:id", async (req, res) => {
+  try {
+    const existing = await Invoice.findOne({ _id: req.params.id, userId: req.user._id });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: "Invoice not found" });
+    }
+
+    const {
+      partyId,
+      partyName,
+      partyPhone,
+      items,
+      paymentMode = "CASH",
+      cashAmount,
+      upiAmount,
+      customDiscountPercent = 0,
+      customFreebieItem = "",
+      notes,
+    } = req.body;
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ success: false, message: "At least one item is required" });
+    }
+
+    // Revert previous item stocks
+    if (existing.items && existing.items.length > 0) {
+      const revertStockOps = existing.items
+        .filter((it) => it.itemId)
+        .map((it) => ({
+          updateOne: {
+            filter: { _id: it.itemId, userId: req.user._id },
+            update: { $inc: { stock: Number(it.quantity) || 1 } },
+          },
+        }));
+      if (revertStockOps.length > 0) {
+        await Item.bulkWrite(revertStockOps, { ordered: false }).catch(() => {});
+      }
+    }
+
+    // Revert previous customer stats
+    if (existing.partyId) {
+      const oldCustomer = await Party.findOne({ _id: existing.partyId, userId: req.user._id });
+      if (oldCustomer) {
+        oldCustomer.totalSpent = Math.max(0, (oldCustomer.totalSpent || 0) - (existing.grandTotal || 0));
+        if (existing.paymentMode === "CREDIT") {
+          oldCustomer.balance = Math.max(0, (oldCustomer.balance || 0) - (existing.grandTotal || 0));
+        }
+        await oldCustomer.save().catch(() => {});
+      }
+    }
+
+    // Process new customer
+    let customer = null;
+    let isRegularCustomer = false;
+    let regularDiscountPercent = Number(customDiscountPercent) || 0;
+    let freebieItem = (customFreebieItem || "").trim();
+    const typedDigits = (partyPhone || "").toString().replace(/[^0-9]/g, "").replace(/^0+/, "");
+    const tenDigitPhone = typedDigits.length >= 10 ? typedDigits.slice(-10) : typedDigits;
+
+    if (partyId) {
+      customer = await Party.findOne({ _id: partyId, userId: req.user._id });
+    } else if (tenDigitPhone && tenDigitPhone.length === 10) {
+      customer = await Party.findOne({
+        userId: req.user._id,
+        $or: [
+          { phone: tenDigitPhone },
+          { phone: `91${tenDigitPhone}` },
+          { whatsappNumber: tenDigitPhone },
+        ],
+      });
+    }
+
+    if (customer) {
+      isRegularCustomer = customer.isRegular || ((customer.visitCount || 0) >= (req.user?.vipVisitThreshold || 3));
+      if (!regularDiscountPercent && isRegularCustomer) {
+        regularDiscountPercent = customer.customDiscountPercent || 0;
+      }
+      if (!freebieItem && isRegularCustomer) {
+        freebieItem = customer.assignedFreebie || "";
+      }
+    }
+
+    // Process items and stock updates
+    let calculatedSubtotal = 0;
+    let calculatedTaxTotal = 0;
+    const processedItems = [];
+    const newStockOps = [];
+
+    for (const it of items) {
+      const price = Number(it.sellingPrice ?? it.price ?? it.rate ?? 0);
+      const qty = Number(it.quantity || it.qty || 1);
+      const taxRate = Number(it.taxRate) || 0;
+      const lineTotal = price * qty;
+      const lineTax = (lineTotal * taxRate) / 100;
+      calculatedSubtotal += lineTotal;
+      calculatedTaxTotal += lineTax;
+      processedItems.push({
+        itemId: it.itemId || it._id,
+        name: it.name,
+        barcode: it.barcode,
+        sellingPrice: price,
+        quantity: qty,
+        unit: it.unit || "PCS",
+        taxRate,
+        discountPercent: it.discountPercent || 0,
+        total: lineTotal + lineTax,
+      });
+      if (it.itemId || it._id) {
+        newStockOps.push({
+          updateOne: {
+            filter: { _id: it.itemId || it._id, userId: req.user._id },
+            update: { $inc: { stock: -qty } },
+          },
+        });
+      }
+    }
+
+    if (newStockOps.length > 0) {
+      await Item.bulkWrite(newStockOps, { ordered: false }).catch(() => {});
+    }
+
+    const discountAmount = Math.round((calculatedSubtotal * regularDiscountPercent) / 100 * 100) / 100;
+    const totalBeforeRound = calculatedSubtotal + calculatedTaxTotal - discountAmount;
+    const grandTotal = Math.round(totalBeforeRound);
+    const roundOff = Math.round((grandTotal - totalBeforeRound) * 100) / 100;
+
+    const mode = paymentMode.toUpperCase();
+    const isCredit = mode === "CREDIT";
+    let finalCash = 0;
+    let finalUpi = 0;
+    if (mode === "UPI/CASH") {
+      finalCash = Number(cashAmount) || 0;
+      finalUpi = Number(upiAmount) || Math.max(0, grandTotal - finalCash);
+    } else if (mode === "CASH") {
+      finalCash = grandTotal;
+    } else if (mode === "UPI") {
+      finalUpi = grandTotal;
+    }
+
+    existing.partyId = customer ? customer._id : undefined;
+    existing.partyName = customer ? customer.name : partyName || "Cash Customer";
+    existing.partyPhone = normalizeWhatsAppNumber(partyPhone || (customer ? customer.phone : ""));
+    existing.isRegularCustomer = isRegularCustomer;
+    existing.items = processedItems;
+    existing.regularDiscountAppliedPercent = regularDiscountPercent;
+    existing.regularDiscountAmount = discountAmount;
+    existing.freebieItemGiven = freebieItem;
+    existing.subtotal = calculatedSubtotal;
+    existing.taxTotal = calculatedTaxTotal;
+    existing.discountTotal = discountAmount;
+    existing.roundOff = roundOff;
+    existing.grandTotal = grandTotal;
+    existing.paymentMode = mode;
+    existing.cashAmount = finalCash;
+    existing.upiAmount = finalUpi;
+    existing.paymentStatus = isCredit ? "UNPAID" : "PAID";
+    existing.paidAmount = isCredit ? 0 : grandTotal;
+    existing.dueAmount = isCredit ? grandTotal : 0;
+    if (notes !== undefined) existing.notes = notes;
+
+    await existing.save();
+
+    if (customer) {
+      customer.totalSpent = (customer.totalSpent || 0) + grandTotal;
+      if (isCredit) {
+        customer.balance = (customer.balance || 0) + grandTotal;
+      }
+      await customer.save().catch(() => {});
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Invoice #${existing.invoiceNumber} updated successfully`,
+      invoice: existing,
+    });
+  } catch (error) {
+    console.error("Update invoice error:", error.message);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.delete("/:id", async (req, res) => {
+  try {
+    const invoice = await Invoice.findOne({ _id: req.params.id, userId: req.user._id });
+    if (!invoice) {
+      return res.status(404).json({ success: false, message: "Invoice not found" });
+    }
+
+    // Restore item stocks
+    if (invoice.items && invoice.items.length > 0) {
+      const restockOps = invoice.items
+        .filter((it) => it.itemId)
+        .map((it) => ({
+          updateOne: {
+            filter: { _id: it.itemId, userId: req.user._id },
+            update: { $inc: { stock: Number(it.quantity) || 1 } },
+          },
+        }));
+      if (restockOps.length > 0) {
+        await Item.bulkWrite(restockOps, { ordered: false }).catch(() => {});
+      }
+    }
+
+    // Revert customer stats
+    if (invoice.partyId) {
+      const customer = await Party.findOne({ _id: invoice.partyId, userId: req.user._id });
+      if (customer) {
+        customer.visitCount = Math.max(0, (customer.visitCount || 1) - 1);
+        customer.totalSpent = Math.max(0, (customer.totalSpent || 0) - (invoice.grandTotal || 0));
+        if (invoice.paymentMode === "CREDIT") {
+          customer.balance = Math.max(0, (customer.balance || 0) - (invoice.grandTotal || 0));
+        }
+        await customer.save().catch(() => {});
+      }
+    }
+
+    await Invoice.deleteOne({ _id: invoice._id });
+
+    return res.status(200).json({
+      success: true,
+      message: `Invoice #${invoice.invoiceNumber} deleted successfully. Stock restored.`,
+    });
+  } catch (error) {
+    console.error("Delete invoice error:", error.message);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 router.get("/:id/pdf", async (req, res) => {
   try {
     const invoice = await Invoice.findOne({ _id: req.params.id, userId: req.user._id });
@@ -638,4 +892,5 @@ router.get("/:id/pdf", async (req, res) => {
     return res.status(500).json({ success: false, message: "Failed to generate PDF", error: error.message });
   }
 });
+
 export default router;

@@ -238,6 +238,15 @@ export const api = {
         method: "POST",
         body: JSON.stringify(payload),
       }),
+    update: (id, payload) =>
+      request(`/invoices/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      }),
+    delete: (id) =>
+      request(`/invoices/${id}`, {
+        method: "DELETE",
+      }),
     sendWhatsApp: (id, phone = "") =>
       request(`/invoices/${id}/send-whatsapp`, {
         method: "POST",
@@ -258,6 +267,7 @@ export const api = {
     getInventoryCsvUrl: () => `${currentBaseUrl}/reports/inventory/csv`,
     getPartiesPdfUrl: () => `${currentBaseUrl}/reports/parties/pdf`,
     getPartiesCsvUrl: () => `${currentBaseUrl}/reports/parties/csv`,
-    getTopItems: (days = 7) => request(`/reports/top-items?days=${days}`),
+    getTopItems: (days = 365) => request(`/reports/top-items?days=${days}`),
+    getCategorySales: (days = 365) => request(`/reports/category-sales?days=${days}`),
   },
 };

@@ -27,6 +27,7 @@ export default function App() {
   const [currentScreen, setCurrentScreen] = useState("loading");
   const [activeTab, setActiveTab] = useState("dashboard");
   const [isCreatingInvoice, setIsCreatingInvoice] = useState(false);
+  const [editingInvoice, setEditingInvoice] = useState(null);
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [user, setUser] = useState(null);
   const [updateInfo, setUpdateInfo] = useState(null);
@@ -154,8 +155,14 @@ export default function App() {
           {isCreatingInvoice ? (
             <InvoiceScreen
               user={user}
-              onBack={() => setIsCreatingInvoice(false)}
+              editingInvoice={editingInvoice}
+              onBack={() => {
+                setIsCreatingInvoice(false);
+                setEditingInvoice(null);
+              }}
               onInvoiceSaved={() => {
+                setIsCreatingInvoice(false);
+                setEditingInvoice(null);
                 setActiveTab("dashboard");
               }}
             />
@@ -164,7 +171,14 @@ export default function App() {
               user={user}
               onOpenDrawer={() => setDrawerVisible(true)}
               onNavigateTab={(tab) => setActiveTab(tab)}
-              onCreateInvoice={() => setIsCreatingInvoice(true)}
+              onCreateInvoice={() => {
+                setEditingInvoice(null);
+                setIsCreatingInvoice(true);
+              }}
+              onEditInvoice={(inv) => {
+                setEditingInvoice(inv);
+                setIsCreatingInvoice(true);
+              }}
             />
           ) : activeTab === "party" ? (
             <PartyScreen onOpenDrawer={() => setDrawerVisible(true)} onBack={() => setActiveTab("dashboard")} />

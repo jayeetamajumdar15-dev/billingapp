@@ -26,6 +26,7 @@ export default function DashboardScreen({
   onOpenDrawer,
   onNavigateTab,
   onCreateInvoice,
+  onEditInvoice,
 }) {
   const [stats, setStats] = useState(null);
   const [recentTransactions, setRecentTransactions] = useState([]);
@@ -36,6 +37,38 @@ export default function DashboardScreen({
   const [selectedBill, setSelectedBill] = useState(null);
   const [billLoading, setBillLoading] = useState(false);
   const [printerPaperSize, setPrinterPaperSize] = useState("2inch");
+
+  const handleDeleteInvoice = (invoiceId, invoiceNum) => {
+    Alert.alert(
+      "Delete Invoice",
+      `Are you sure you want to permanently delete Bill #${invoiceNum}? This will restore product inventory.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setLoading(true);
+              const res = await api.invoices.delete(invoiceId);
+              if (res && res.success) {
+                setSelectedBill(null);
+                Alert.alert("Deleted", res.message || "Invoice deleted successfully");
+                fetchDashboardData();
+              } else {
+                Alert.alert("Error", res?.message || "Failed to delete invoice");
+              }
+            } catch (err) {
+              Alert.alert("Error", err.message || "Failed to delete invoice");
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const fetchDashboardData = async () => {
     setLoading(true);
     const res = await api.dashboard.getStats();
@@ -210,12 +243,19 @@ export default function DashboardScreen({
           </View>
         </TouchableOpacity>
         <View className="flex-row items-center justify-between mb-2 px-1">
-          <Text className="text-xs font-extrabold text-gray-700 uppercase tracking-widest">
-            Recent Sale Transactions
-          </Text>
-          <Text className="text-[11px] text-gray-400">
-            {recentTransactions.length} recorded
-          </Text>
+          <View>
+            <Text className="text-xs font-extrabold text-gray-700 uppercase tracking-widest">
+              Today's Sale Transactions
+            </Text>
+            <Text className="text-[10px] text-gray-400">
+              Resets daily at midnight • Full history in Reports
+            </Text>
+          </View>
+          <View className="bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+            <Text className="text-[10px] font-bold text-blue-700">
+              {recentTransactions.length} today
+            </Text>
+          </View>
         </View>
         {loading && !refreshing ? (
           <View className="py-12 items-center">
@@ -229,10 +269,13 @@ export default function DashboardScreen({
           >
             <FontAwesome5 name="file-invoice-dollar" size={36} color="#2563EB" />
             <Text className="text-gray-700 font-bold text-sm mt-3">
-              No sales yet
+              No sales recorded yet today
             </Text>
-            <Text className="text-blue-600 font-bold text-xs mt-1">
-              Tap here or "+ Sale Invoice" below to create your first bill!
+            <Text className="text-gray-400 text-center text-xs mt-1">
+              Recent transactions reset fresh daily. Past invoices are safely stored in Reports ➔ Sales.
+            </Text>
+            <Text className="text-blue-600 font-bold text-xs mt-2">
+              Tap here or "+ Sale Invoice" below to create today's first bill!
             </Text>
           </TouchableOpacity>
         ) : (
@@ -271,9 +314,14 @@ export default function DashboardScreen({
                     </View>
                   ) : null}
                 </View>
-                <Text className="text-[11px] text-gray-400 mt-0.5">
-                  {tx.invoiceNumber} • {new Date(tx.invoiceDate).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                <Text className="text-[11px] text-gray-500 mt-0.5 font-bold">
+                  Bill #{tx.invoiceNumber} • {new Date(tx.invoiceDate || tx.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                 </Text>
+                {tx.items && tx.items.length > 0 ? (
+                  <Text className="text-xs text-blue-900 font-semibold mt-1" numberOfLines={2}>
+                    🛍️ {tx.items.map((it) => `${it.name || it.itemName} (x${it.quantity || it.qty || 1})`).join(", ")}
+                  </Text>
+                ) : null}
                 <View className="flex-row items-center gap-1.5 mt-2">
                   <View
                     className={`px-2 py-0.5 rounded border ${
@@ -300,23 +348,44 @@ export default function DashboardScreen({
                       {tx.paymentMode}
                     </Text>
                   </View>
-                  <Text className="text-[10px] text-blue-500 font-bold">Tap to view bill →</Text>
+                  <Text className="text-[10px] text-blue-500 font-bold">Tap to view full bill details →</Text>
                 </View>
               </View>
-              <View className="items-end">
+              <View className="items-end justify-between">
                 <Text className="text-base font-extrabold text-gray-900 mb-1">
                   Rs. {tx.grandTotal}
                 </Text>
-                <TouchableOpacity
-                  onPress={async (e) => {
-                    e.stopPropagation && e.stopPropagation();
-                    await shareBackendPdf(tx, `Invoice_${tx.invoiceNumber || tx._id}.pdf`);
-                  }}
-                  className="bg-emerald-50 border border-emerald-300 px-2 py-1 rounded-lg flex-row items-center active:bg-emerald-100"
-                >
-                  <FontAwesome5 name="whatsapp" size={11} color="#059669" />
-                  <Text className="text-emerald-800 text-[10px] font-bold ml-1">Share Bill</Text>
-                </TouchableOpacity>
+                <View className="flex-row items-center gap-1 mt-1">
+                  <TouchableOpacity
+                    onPress={(e) => {
+                      e.stopPropagation && e.stopPropagation();
+                      if (onEditInvoice) onEditInvoice(tx);
+                    }}
+                    className="bg-blue-50 border border-blue-200 px-2 py-1 rounded-lg flex-row items-center active:bg-blue-100"
+                  >
+                    <Ionicons name="create-outline" size={12} color="#2563EB" />
+                    <Text className="text-blue-800 text-[10px] font-bold ml-0.5">Edit</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={(e) => {
+                      e.stopPropagation && e.stopPropagation();
+                      handleDeleteInvoice(tx._id, tx.invoiceNumber);
+                    }}
+                    className="bg-red-50 border border-red-200 px-2 py-1 rounded-lg flex-row items-center active:bg-red-100"
+                  >
+                    <Ionicons name="trash-outline" size={12} color="#DC2626" />
+                    <Text className="text-red-700 text-[10px] font-bold ml-0.5">Del</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={async (e) => {
+                      e.stopPropagation && e.stopPropagation();
+                      await shareBackendPdf(tx, `Invoice_${tx.invoiceNumber || tx._id}.pdf`);
+                    }}
+                    className="bg-emerald-50 border border-emerald-300 px-2 py-1 rounded-lg flex-row items-center active:bg-emerald-100"
+                  >
+                    <FontAwesome5 name="whatsapp" size={11} color="#059669" />
+                  </TouchableOpacity>
+                </View>
               </View>
             </TouchableOpacity>
           ))
@@ -383,13 +452,33 @@ export default function DashboardScreen({
                   <Text style={{ flex: 1, color: "#FFFFFF", fontSize: 11, fontWeight: "800", textAlign: "center" }}>Qty</Text>
                   <Text style={{ flex: 1.5, color: "#FFFFFF", fontSize: 11, fontWeight: "800", textAlign: "right" }}>Amount</Text>
                 </View>
-                {(selectedBill?.items || []).map((it, idx) => (
-                  <View key={idx} style={{ flexDirection: "row", paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#F3F4F6", backgroundColor: idx % 2 === 0 ? "#FFFFFF" : "#F9FAFB" }}>
-                    <Text style={{ flex: 3, fontSize: 12, color: "#111827", fontWeight: "600" }} numberOfLines={2}>{it.name || it.itemName}</Text>
-                    <Text style={{ flex: 1, fontSize: 12, color: "#374151", textAlign: "center" }}>{it.quantity || it.qty || 1}</Text>
-                    <Text style={{ flex: 1.5, fontSize: 12, color: "#111827", fontWeight: "700", textAlign: "right" }}>Rs. {Number(it.total || it.amount || (it.sellingPrice * (it.quantity || 1)) || 0).toLocaleString("en-IN")}</Text>
+                {(selectedBill?.items || []).length === 0 ? (
+                  <View style={{ padding: 14, alignItems: "center" }}>
+                    <Text style={{ color: "#9CA3AF", fontSize: 12 }}>No items recorded for this bill.</Text>
                   </View>
-                ))}
+                ) : (
+                  (selectedBill?.items || []).map((it, idx) => {
+                    const price = Number(it.sellingPrice || it.price || it.rate || 0);
+                    const qty = Number(it.quantity || it.qty || 1);
+                    const total = Number(it.total || it.amount || (price * qty) || 0);
+                    return (
+                      <View key={idx} style={{ flexDirection: "row", paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#F3F4F6", backgroundColor: idx % 2 === 0 ? "#FFFFFF" : "#F9FAFB", alignItems: "center" }}>
+                        <View style={{ flex: 3, paddingRight: 4 }}>
+                          <Text style={{ fontSize: 12, color: "#111827", fontWeight: "700" }} numberOfLines={2}>
+                            {it.name || it.itemName || "Item"}
+                          </Text>
+                          {price > 0 ? (
+                            <Text style={{ fontSize: 10, color: "#6B7280", marginTop: 1 }}>
+                              Rs. {price} / {it.unit || "unit"}
+                            </Text>
+                          ) : null}
+                        </View>
+                        <Text style={{ flex: 1, fontSize: 12, color: "#374151", fontWeight: "600", textAlign: "center" }}>{qty}</Text>
+                        <Text style={{ flex: 1.5, fontSize: 12, color: "#111827", fontWeight: "800", textAlign: "right" }}>Rs. {total.toLocaleString("en-IN")}</Text>
+                      </View>
+                    );
+                  })
+                )}
               </View>
 
               {/* Totals */}
@@ -420,6 +509,29 @@ export default function DashboardScreen({
                   <Text style={{ color: "#6B7280", fontSize: 11 }}>Payment</Text>
                   <Text style={{ color: "#374151", fontSize: 11, fontWeight: "700" }}>{selectedBill?.paymentMode || "CASH"}</Text>
                 </View>
+              </View>
+
+              {/* Action Buttons: Edit & Delete */}
+              <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
+                <TouchableOpacity
+                  onPress={() => {
+                    const inv = selectedBill;
+                    setSelectedBill(null);
+                    if (onEditInvoice) onEditInvoice(inv);
+                  }}
+                  style={{ flex: 1, backgroundColor: "#EFF6FF", borderWidth: 1, borderColor: "#BFDBFE", borderRadius: 12, paddingVertical: 12, flexDirection: "row", alignItems: "center", justifyContent: "center" }}
+                >
+                  <Ionicons name="create-outline" size={16} color="#2563EB" />
+                  <Text style={{ color: "#1D4ED8", fontWeight: "800", fontSize: 13, marginLeft: 6 }}>Edit Bill</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => handleDeleteInvoice(selectedBill._id, selectedBill.invoiceNumber)}
+                  style={{ flex: 1, backgroundColor: "#FEF2F2", borderWidth: 1, borderColor: "#FECACA", borderRadius: 12, paddingVertical: 12, flexDirection: "row", alignItems: "center", justifyContent: "center" }}
+                >
+                  <Ionicons name="trash-outline" size={16} color="#DC2626" />
+                  <Text style={{ color: "#DC2626", fontWeight: "800", fontSize: 13, marginLeft: 6 }}>Delete Bill</Text>
+                </TouchableOpacity>
               </View>
 
               {/* Share Button */}
