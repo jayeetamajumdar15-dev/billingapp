@@ -52,8 +52,8 @@ export default function ReportsScreen({ onOpenDrawer, onBack }) {
         }
       } else if (reportType === "topItems") {
         const res = await api.reports.getTopItems(topDays);
-        if (res.success) {
-          setTopItemsData(res.data || []);
+        if (res && res.success) {
+          setTopItemsData(res.data || res.topItems || []);
           setOverallTopData(res.overallTop || []);
         }
       }
@@ -93,6 +93,9 @@ export default function ReportsScreen({ onOpenDrawer, onBack }) {
     if (reportType === "sales") {
       url = api.reports.getSalesPdfUrl(`period=${period}`);
       fileName = `SalesReport_${period}_${timestamp}.pdf`;
+    } else if (reportType === "topItems") {
+      url = api.reports.getSalesPdfUrl(`period=year`);
+      fileName = `TopSales_Yearly_${timestamp}.pdf`;
     } else if (reportType === "inventory") {
       url = api.reports.getInventoryPdfUrl();
       fileName = `InventoryReport_${timestamp}.pdf`;
@@ -798,7 +801,7 @@ export default function ReportsScreen({ onOpenDrawer, onBack }) {
                   Grouping transactions by date & category
                 </Text>
               </View>
-            ) : !categorySalesData || (categorySalesData.dailyCategorySales || []).length === 0 ? (
+            ) : !categorySalesData || ((categorySalesData.dailyCategorySales || categorySalesData.data || categorySalesData.daily || []).length === 0) ? (
               <View style={{ padding: 40, alignItems: "center", justifyContent: "center", flex: 1 }}>
                 <Ionicons name="alert-circle-outline" size={48} color="#D1D5DB" />
                 <Text style={{ fontSize: 14, fontWeight: "bold", color: "#6B7280", marginTop: 12 }}>
@@ -815,17 +818,17 @@ export default function ReportsScreen({ onOpenDrawer, onBack }) {
                   <View style={{ flex: 1, backgroundColor: "#EEF2FF", borderRadius: 14, padding: 12, borderWidth: 1, borderColor: "#C7D2FE" }}>
                     <Text style={{ fontSize: 10, fontWeight: "800", color: "#4338CA", textTransform: "uppercase" }}>Categories</Text>
                     <Text style={{ fontSize: 20, fontWeight: "900", color: "#312E81", marginTop: 2 }}>
-                      {categorySalesData.yearlyCategorySummary?.length || 0}
+                      {(categorySalesData.yearlyCategorySummary || categorySalesData.yearly || []).length}
                     </Text>
                     <Text style={{ fontSize: 10, color: "#6366F1", marginTop: 2 }}>Tracked across year</Text>
                   </View>
                   <View style={{ flex: 1.3, backgroundColor: "#ECFDF5", borderRadius: 14, padding: 12, borderWidth: 1, borderColor: "#A7F3D0" }}>
                     <Text style={{ fontSize: 10, fontWeight: "800", color: "#065F46", textTransform: "uppercase" }}>Yearly Category Sales</Text>
                     <Text style={{ fontSize: 20, fontWeight: "900", color: "#064E3B", marginTop: 2 }}>
-                      Rs. {(categorySalesData.yearlyCategorySummary || []).reduce((acc, c) => acc + (c.totalRevenue || 0), 0).toLocaleString("en-IN")}
+                      Rs. {(categorySalesData.yearlyCategorySummary || categorySalesData.yearly || []).reduce((acc, c) => acc + (c.totalRevenue || 0), 0).toLocaleString("en-IN")}
                     </Text>
                     <Text style={{ fontSize: 10, color: "#059669", marginTop: 2 }}>
-                      {(categorySalesData.yearlyCategorySummary || []).reduce((acc, c) => acc + (c.totalQty || 0), 0)} items sold
+                      {(categorySalesData.yearlyCategorySummary || categorySalesData.yearly || []).reduce((acc, c) => acc + (c.totalQty || 0), 0)} items sold
                     </Text>
                   </View>
                 </View>
@@ -835,7 +838,7 @@ export default function ReportsScreen({ onOpenDrawer, onBack }) {
                   Filter by Category:
                 </Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-                  {["All", ...(categorySalesData.yearlyCategorySummary || []).map((c) => c.category)].map((cat) => (
+                  {["All", ...((categorySalesData.yearlyCategorySummary || categorySalesData.yearly || []).map((c) => c.category))].map((cat) => (
                     <TouchableOpacity
                       key={cat}
                       onPress={() => setSelectedCategoryFilter(cat)}
@@ -867,7 +870,7 @@ export default function ReportsScreen({ onOpenDrawer, onBack }) {
                   Daily Timeline (Whole Year):
                 </Text>
 
-                {(categorySalesData.dailyCategorySales || [])
+                {(categorySalesData.dailyCategorySales || categorySalesData.data || categorySalesData.daily || [])
                   .filter((day) => {
                     if (selectedCategoryFilter === "All") return true;
                     return (day.categories || []).some((c) => c.category === selectedCategoryFilter);
@@ -970,10 +973,10 @@ export default function ReportsScreen({ onOpenDrawer, onBack }) {
                                   }}
                                 >
                                   <Text style={{ fontSize: 11, color: "#4B5563", flex: 1 }} numberOfLines={1}>
-                                    • {it.name} <Text style={{ color: "#6B7280" }}>(x{it.quantity})</Text>
+                                    • {it.name || "Item"} <Text style={{ color: "#6B7280" }}>(x{it.quantity || it.qty || 1})</Text>
                                   </Text>
                                   <Text style={{ fontSize: 11, fontWeight: "700", color: "#374151" }}>
-                                    Rs. {Number(it.revenue || 0).toLocaleString("en-IN")}
+                                    Rs. {Number(it.revenue || it.total || 0).toLocaleString("en-IN")}
                                   </Text>
                                 </View>
                               ))}

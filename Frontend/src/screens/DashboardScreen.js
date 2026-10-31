@@ -38,7 +38,48 @@ export default function DashboardScreen({
   const [billLoading, setBillLoading] = useState(false);
   const [printerPaperSize, setPrinterPaperSize] = useState("2inch");
 
+  const executeDeleteInvoice = async (invoiceId) => {
+    try {
+      setLoading(true);
+      const res = await api.invoices.delete(invoiceId);
+      if (res && res.success) {
+        setSelectedBill(null);
+        if (Platform.OS === "web") {
+          window.alert(res.message || "Invoice deleted successfully");
+        } else {
+          Alert.alert("Deleted", res.message || "Invoice deleted successfully");
+        }
+        await fetchDashboardData();
+      } else {
+        const msg = res?.message || "Failed to delete invoice";
+        if (Platform.OS === "web") {
+          window.alert(msg);
+        } else {
+          Alert.alert("Error", msg);
+        }
+      }
+    } catch (err) {
+      const msg = err.message || "Failed to delete invoice";
+      if (Platform.OS === "web") {
+        window.alert(msg);
+      } else {
+        Alert.alert("Error", msg);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleDeleteInvoice = (invoiceId, invoiceNum) => {
+    if (Platform.OS === "web") {
+      const confirmed = window.confirm(
+        `Are you sure you want to permanently delete Bill #${invoiceNum}? This will restore product inventory.`
+      );
+      if (confirmed) {
+        executeDeleteInvoice(invoiceId);
+      }
+      return;
+    }
     Alert.alert(
       "Delete Invoice",
       `Are you sure you want to permanently delete Bill #${invoiceNum}? This will restore product inventory.`,
@@ -47,26 +88,27 @@ export default function DashboardScreen({
         {
           text: "Delete",
           style: "destructive",
-          onPress: async () => {
-            try {
-              setLoading(true);
-              const res = await api.invoices.delete(invoiceId);
-              if (res && res.success) {
-                setSelectedBill(null);
-                Alert.alert("Deleted", res.message || "Invoice deleted successfully");
-                fetchDashboardData();
-              } else {
-                Alert.alert("Error", res?.message || "Failed to delete invoice");
-              }
-            } catch (err) {
-              Alert.alert("Error", err.message || "Failed to delete invoice");
-            } finally {
-              setLoading(false);
-            }
-          },
+          onPress: () => executeDeleteInvoice(invoiceId),
         },
       ]
     );
+  };
+
+  const handleEditInvoice = async (tx) => {
+    setSelectedBill(null);
+    setBillLoading(true);
+    try {
+      const res = await api.invoices.getOne(tx._id);
+      if (res && res.success && res.invoice) {
+        if (onEditInvoice) onEditInvoice(res.invoice);
+      } else {
+        if (onEditInvoice) onEditInvoice(tx);
+      }
+    } catch {
+      if (onEditInvoice) onEditInvoice(tx);
+    } finally {
+      setBillLoading(false);
+    }
   };
 
   const fetchDashboardData = async () => {
@@ -359,7 +401,7 @@ export default function DashboardScreen({
                   <TouchableOpacity
                     onPress={(e) => {
                       e.stopPropagation && e.stopPropagation();
-                      if (onEditInvoice) onEditInvoice(tx);
+                      handleEditInvoice(tx);
                     }}
                     className="bg-blue-50 border border-blue-200 px-2 py-1 rounded-lg flex-row items-center active:bg-blue-100"
                   >
@@ -516,8 +558,7 @@ export default function DashboardScreen({
                 <TouchableOpacity
                   onPress={() => {
                     const inv = selectedBill;
-                    setSelectedBill(null);
-                    if (onEditInvoice) onEditInvoice(inv);
+                    handleEditInvoice(inv);
                   }}
                   style={{ flex: 1, backgroundColor: "#EFF6FF", borderWidth: 1, borderColor: "#BFDBFE", borderRadius: 12, paddingVertical: 12, flexDirection: "row", alignItems: "center", justifyContent: "center" }}
                 >

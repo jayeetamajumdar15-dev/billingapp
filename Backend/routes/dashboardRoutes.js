@@ -42,7 +42,7 @@ router.get("/stats", async (req, res) => {
         .sort({ invoiceDate: -1, createdAt: -1 })
         .limit(50)
         .select(
-          "invoiceNumber partyName partyPhone paymentMode grandTotal subtotal discountTotal taxTotal roundOff items notes invoiceDate createdAt isRegularCustomer"
+          "invoiceNumber partyName partyPhone paymentMode grandTotal subtotal discountTotal taxTotal roundOff items notes invoiceDate createdAt isRegularCustomer cashAmount upiAmount partyId regularDiscountAppliedPercent freebieItemGiven"
         )
         .lean(),
 

@@ -356,9 +356,16 @@ router.post("/", async (req, res) => {
       const lineTax = (lineTotal * taxRate) / 100;
       calculatedSubtotal += lineTotal;
       calculatedTaxTotal += lineTax;
+      const validItemId =
+        it.itemId && mongoose.Types.ObjectId.isValid(it.itemId)
+          ? new mongoose.Types.ObjectId(it.itemId)
+          : it._id && mongoose.Types.ObjectId.isValid(it._id)
+          ? new mongoose.Types.ObjectId(it._id)
+          : undefined;
+
       processedItems.push({
-        itemId: it.itemId || it._id,
-        name: it.name,
+        itemId: validItemId,
+        name: it.name || it.itemName || "Item",
         barcode: it.barcode,
         sellingPrice: price,
         quantity: qty,
@@ -367,10 +374,10 @@ router.post("/", async (req, res) => {
         discountPercent: it.discountPercent || 0,
         total: lineTotal + lineTax,
       });
-      if (it.itemId || it._id) {
+      if (validItemId) {
         stockUpdates.push({
           updateOne: {
-            filter: { _id: it.itemId || it._id, userId: req.user._id },
+            filter: { _id: validItemId, userId: req.user._id },
             update: { $inc: { stock: -qty } },
           },
         });
@@ -746,9 +753,16 @@ router.put("/:id", async (req, res) => {
       const lineTax = (lineTotal * taxRate) / 100;
       calculatedSubtotal += lineTotal;
       calculatedTaxTotal += lineTax;
+      const validItemId =
+        it.itemId && mongoose.Types.ObjectId.isValid(it.itemId)
+          ? new mongoose.Types.ObjectId(it.itemId)
+          : it._id && mongoose.Types.ObjectId.isValid(it._id)
+          ? new mongoose.Types.ObjectId(it._id)
+          : undefined;
+
       processedItems.push({
-        itemId: it.itemId || it._id,
-        name: it.name,
+        itemId: validItemId,
+        name: it.name || it.itemName || "Item",
         barcode: it.barcode,
         sellingPrice: price,
         quantity: qty,
@@ -757,10 +771,10 @@ router.put("/:id", async (req, res) => {
         discountPercent: it.discountPercent || 0,
         total: lineTotal + lineTax,
       });
-      if (it.itemId || it._id) {
+      if (validItemId) {
         newStockOps.push({
           updateOne: {
-            filter: { _id: it.itemId || it._id, userId: req.user._id },
+            filter: { _id: validItemId, userId: req.user._id },
             update: { $inc: { stock: -qty } },
           },
         });
@@ -833,7 +847,13 @@ router.put("/:id", async (req, res) => {
 
 router.delete("/:id", async (req, res) => {
   try {
-    const invoice = await Invoice.findOne({ _id: req.params.id, userId: req.user._id });
+    const query = { userId: req.user._id };
+    if (mongoose.Types.ObjectId.isValid(req.params.id)) {
+      query._id = new mongoose.Types.ObjectId(req.params.id);
+    } else {
+      query._id = req.params.id;
+    }
+    const invoice = await Invoice.findOne(query);
     if (!invoice) {
       return res.status(404).json({ success: false, message: "Invoice not found" });
     }

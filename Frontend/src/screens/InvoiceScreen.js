@@ -82,14 +82,14 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved, editingInv
     if (editingInvoice) {
       if (editingInvoice.items && Array.isArray(editingInvoice.items)) {
         setCart(
-          editingInvoice.items.map((it) => ({
-            _id: it.itemId || it._id,
-            name: it.name,
+          editingInvoice.items.map((it, idx) => ({
+            _id: it.itemId || it._id || `edit_item_${idx}`,
+            name: it.name || it.itemName || "Item",
             barcode: it.barcode || "",
-            sellingPrice: it.sellingPrice || 0,
-            quantity: it.quantity || 1,
+            sellingPrice: Number(it.sellingPrice ?? it.price ?? it.rate ?? 0),
+            quantity: Number(it.quantity || it.qty || 1),
             unit: it.unit || "PCS",
-            taxRate: it.taxRate || 0,
+            taxRate: Number(it.taxRate) || 0,
           }))
         );
       }
@@ -110,6 +110,7 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved, editingInv
       if (editingInvoice.freebieItemGiven) {
         setCustomFreebie(editingInvoice.freebieItemGiven);
       }
+      setCurrentStep("invoice");
     }
   }, [editingInvoice]);
 
@@ -324,12 +325,18 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved, editingInv
       : await api.invoices.create(payload);
     setLoading(false);
 
-    if (res.success && res.invoice) {
+    if (res && res.success && res.invoice) {
       setCreatedInvoice(res.invoice);
       setWhatsappUrl(res.whatsappUrl || "");
       setWhatsappSent(Boolean(res.whatsappSent));
       setShowReceiptModal(true);
       setKotSent(false);
+
+      if (editingInvoice) {
+        if (Platform.OS === "web") {
+          window.alert(res.message || "Invoice updated successfully!");
+        }
+      }
 
       // Automatic printing only if printTarget is not 'none'
       if (printTarget !== "none") {
@@ -348,7 +355,12 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved, editingInv
         }
       }
     } else {
-      Alert.alert("Billing Failed", res.message || "Could not generate invoice");
+      const errorMsg = res?.message || "Could not save invoice";
+      if (Platform.OS === "web") {
+        window.alert(errorMsg);
+      } else {
+        Alert.alert("Billing Failed", errorMsg);
+      }
     }
   };
 

@@ -1,4 +1,5 @@
 import express from "express";
+import mongoose from "mongoose";
 import Invoice from "../models/Invoice.js";
 import Item from "../models/Item.js";
 import Party from "../models/Party.js";
@@ -45,7 +46,10 @@ async function fetchSalesData(userId, query) {
   const { startDate, endDate } = getDateRange(query);
   const filter = {
     userId,
-    createdAt: { $gte: startDate, $lte: endDate },
+    $or: [
+      { createdAt: { $gte: startDate, $lte: endDate } },
+      { invoiceDate: { $gte: startDate, $lte: endDate } },
+    ],
   };
 
   if (query.paymentMode) {
@@ -53,7 +57,7 @@ async function fetchSalesData(userId, query) {
   }
 
   const invoices = await Invoice.find(filter)
-    .sort({ createdAt: -1 })
+    .sort({ invoiceDate: -1, createdAt: -1 })
     .lean();
 
   let totalSales = 0;
@@ -219,27 +223,35 @@ router.get("/parties/csv", async (req, res) => {
 // Top selling items per day (supports 7, 30, 365 days / yearly)
 router.get("/top-items", async (req, res) => {
   try {
-    const userId = req.user._id;
+    const userId = mongoose.Types.ObjectId.isValid(req.user._id)
+      ? new mongoose.Types.ObjectId(req.user._id)
+      : req.user._id;
     const days = parseInt(req.query.days) || 365;
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
     startDate.setHours(0, 0, 0, 0);
 
+    const matchStage = {
+      userId,
+      $or: [
+        { createdAt: { $gte: startDate } },
+        { invoiceDate: { $gte: startDate } },
+      ],
+    };
+
     const results = await Invoice.aggregate([
-      {
-        $match: {
-          userId,
-          createdAt: { $gte: startDate },
-        },
-      },
+      { $match: matchStage },
       { $unwind: "$items" },
       {
         $group: {
           _id: {
             date: {
-              $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
+              $dateToString: {
+                format: "%Y-%m-%d",
+                date: { $ifNull: ["$invoiceDate", "$createdAt"] },
+              },
             },
-            itemName: { $ifNull: ["$items.name", "$items.itemName"] },
+            itemName: { $ifNull: ["$items.name", "$items.itemName", "Item"] },
           },
           totalQty: { $sum: { $ifNull: ["$items.quantity", "$items.qty", 1] } },
           totalRevenue: {
@@ -258,7 +270,7 @@ router.get("/top-items", async (req, res) => {
           },
         },
       },
-      { $sort: { "_id.date": -1, totalQty: -1 } },
+      { $sort: { "_id.date": -1, totalQty: -1, totalRevenue: -1 } },
       {
         $group: {
           _id: "$_id.date",
@@ -284,16 +296,11 @@ router.get("/top-items", async (req, res) => {
 
     // Also get overall yearly top items
     const overallTop = await Invoice.aggregate([
-      {
-        $match: {
-          userId,
-          createdAt: { $gte: startDate },
-        },
-      },
+      { $match: matchStage },
       { $unwind: "$items" },
       {
         $group: {
-          _id: { $ifNull: ["$items.name", "$items.itemName"] },
+          _id: { $ifNull: ["$items.name", "$items.itemName", "Item"] },
           totalQty: { $sum: { $ifNull: ["$items.quantity", "$items.qty", 1] } },
           totalRevenue: {
             $sum: {
@@ -323,8 +330,14 @@ router.get("/top-items", async (req, res) => {
       },
     ]);
 
-    return res.status(200).json({ success: true, data: results, overallTop });
+    return res.status(200).json({
+      success: true,
+      data: results,
+      topItems: results,
+      overallTop,
+    });
   } catch (err) {
+    console.error("Top items error:", err.message);
     return res.status(500).json({ success: false, message: err.message });
   }
 });
@@ -332,19 +345,24 @@ router.get("/top-items", async (req, res) => {
 // Category-wise selling per day for the whole year
 router.get("/category-sales", async (req, res) => {
   try {
-    const userId = req.user._id;
+    const userId = mongoose.Types.ObjectId.isValid(req.user._id)
+      ? new mongoose.Types.ObjectId(req.user._id)
+      : req.user._id;
     const days = parseInt(req.query.days) || 365;
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
     startDate.setHours(0, 0, 0, 0);
 
+    const matchStage = {
+      userId,
+      $or: [
+        { createdAt: { $gte: startDate } },
+        { invoiceDate: { $gte: startDate } },
+      ],
+    };
+
     const dailyResults = await Invoice.aggregate([
-      {
-        $match: {
-          userId,
-          createdAt: { $gte: startDate },
-        },
-      },
+      { $match: matchStage },
       { $unwind: "$items" },
       {
         $lookup: {
@@ -367,7 +385,12 @@ router.get("/category-sales", async (req, res) => {
       {
         $group: {
           _id: {
-            date: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+            date: {
+              $dateToString: {
+                format: "%Y-%m-%d",
+                date: { $ifNull: ["$invoiceDate", "$createdAt"] },
+              },
+            },
             category: "$categoryName",
           },
           totalQty: { $sum: { $ifNull: ["$items.quantity", "$items.qty", 1] } },
@@ -387,9 +410,22 @@ router.get("/category-sales", async (req, res) => {
           },
           items: {
             $push: {
-              name: { $ifNull: ["$items.name", "$items.itemName"] },
+              name: { $ifNull: ["$items.name", "$items.itemName", "Item"] },
+              quantity: { $ifNull: ["$items.quantity", "$items.qty", 1] },
               qty: { $ifNull: ["$items.quantity", "$items.qty", 1] },
               price: { $ifNull: ["$items.sellingPrice", "$items.rate", 0] },
+              revenue: {
+                $ifNull: [
+                  "$items.total",
+                  "$items.amount",
+                  {
+                    $multiply: [
+                      { $ifNull: ["$items.sellingPrice", "$items.rate", 0] },
+                      { $ifNull: ["$items.quantity", "$items.qty", 1] },
+                    ],
+                  },
+                ],
+              },
               total: { $ifNull: ["$items.total", "$items.amount", 0] },
             },
           },
@@ -425,12 +461,7 @@ router.get("/category-sales", async (req, res) => {
 
     // Yearly summary by category
     const yearlyCategorySummary = await Invoice.aggregate([
-      {
-        $match: {
-          userId,
-          createdAt: { $gte: startDate },
-        },
-      },
+      { $match: matchStage },
       { $unwind: "$items" },
       {
         $lookup: {
@@ -484,9 +515,13 @@ router.get("/category-sales", async (req, res) => {
     return res.status(200).json({
       success: true,
       data: dailyResults,
+      dailyCategorySales: dailyResults,
+      daily: dailyResults,
       yearlyCategorySummary,
+      yearly: yearlyCategorySummary,
     });
   } catch (err) {
+    console.error("Category sales error:", err.message);
     return res.status(500).json({ success: false, message: err.message });
   }
 });
