@@ -84,15 +84,16 @@ app.get("/api/download-apk", (req, res) => {
 app.get("/api/app-version", (req, res) => {
   const host = req.get("host") || "localhost:5000";
   const protocol = req.protocol || "http";
+  const defaultApkUrl = "https://billingapp-backend-hcan.onrender.com/api/download-apk";
   const fallbackApkUrl = `${protocol}://${host}/api/download-apk`;
   res.status(200).json({
     success: true,
-    latestVersion: process.env.APP_LATEST_VERSION || "1.0.0",
+    latestVersion: process.env.APP_LATEST_VERSION || "1.0.1",
     minSupportedVersion: process.env.APP_MIN_VERSION || "1.0.0",
-    apkUrl: process.env.APP_APK_URL || fallbackApkUrl,
+    apkUrl: process.env.APP_APK_URL || defaultApkUrl || fallbackApkUrl,
     releaseNotes:
       process.env.APP_RELEASE_NOTES ||
-      "Updated with latest improvements, faster billing, and fixes.",
+      "Version 1.0.1: Invoice editing, clean transaction view, dynamic menu, category analytics, and bug fixes.",
     forceUpdate: false,
     timestamp: new Date().toISOString(),
   });

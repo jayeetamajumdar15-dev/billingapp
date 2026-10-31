@@ -3,7 +3,7 @@ import * as Updates from "expo-updates";
 import { getApiBaseUrl } from "../config/api";
 
 export const CURRENT_APP_VERSION = "1.0.0";
-export const GITHUB_RELEASES_URL = "https://github.com/Tanmoy200405/billingapp/releases/latest";
+export const GITHUB_RELEASES_URL = "https://billingapp-backend-hcan.onrender.com/api/download-apk";
 
 /**
  * Compare two semver strings: returns 1 if v1 > v2, -1 if v1 < v2, 0 if equal

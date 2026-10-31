@@ -346,11 +346,17 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
           );
         } else {
           Alert.alert(
-            `New Version ${update.version || ""} Available`,
-            update.notes || "A new update is ready for download.",
+            `New Version ${update.version || "1.0.1"} Available!`,
+            `${update.notes || "A new update is ready for download."}\n\nDirect Download Link:\n${update.apkUrl || "https://billingapp-backend-hcan.onrender.com/api/download-apk"}`,
             [
-              { text: "Later", style: "cancel" },
-              { text: "Download & Install", onPress: () => openApkDownload(update.apkUrl) },
+              { text: "Cancel", style: "cancel" },
+              {
+                text: "Download APK",
+                onPress: () =>
+                  openApkDownload(
+                    update.apkUrl || "https://billingapp-backend-hcan.onrender.com/api/download-apk"
+                  ),
+              },
             ]
           );
         }
@@ -586,7 +592,7 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
                   App Version & Updates
                 </Text>
                 <View className="bg-blue-100 px-2.5 py-0.5 rounded-full">
-                  <Text className="text-[11px] text-blue-700 font-extrabold">v{CURRENT_APP_VERSION}</Text>
+                  <Text className="text-[11px] text-blue-700 font-extrabold">Installed: v{CURRENT_APP_VERSION}</Text>
                 </View>
               </View>
               <Text className="text-xs text-gray-600 mb-3">
@@ -595,17 +601,45 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
               <TouchableOpacity
                 onPress={handleCheckForUpdates}
                 disabled={checkingUpdate}
-                className="bg-blue-50 border border-blue-200 py-2.5 rounded-xl flex-row items-center justify-center"
+                className="bg-blue-50 border border-blue-200 py-2.5 rounded-xl flex-row items-center justify-center mb-3"
               >
                 {checkingUpdate ? (
                   <ActivityIndicator size="small" color="#2563EB" />
                 ) : (
                   <>
                     <Ionicons name="cloud-download-outline" size={18} color="#2563EB" />
-                    <Text className="text-blue-600 font-bold text-xs ml-1.5">Check for App Updates</Text>
+                    <Text className="text-blue-600 font-bold text-xs ml-1.5">Check for App Updates (v1.0.1)</Text>
                   </>
                 )}
               </TouchableOpacity>
+
+              <View className="p-3 bg-blue-50/60 rounded-xl border border-blue-100">
+                <View className="flex-row items-center justify-between mb-1">
+                  <Text className="text-xs font-bold text-gray-800">Latest Release: v1.0.1</Text>
+                  <View className="bg-emerald-100 px-2 py-0.5 rounded-full">
+                    <Text className="text-[10px] font-extrabold text-emerald-800">APK Available</Text>
+                  </View>
+                </View>
+                <Text className="text-[11px] text-gray-500 mb-2">
+                  Direct APK download link for Android:
+                </Text>
+                <TouchableOpacity
+                  onPress={() =>
+                    openApkDownload("https://billingapp-backend-hcan.onrender.com/api/download-apk")
+                  }
+                  className="bg-blue-600 py-2 px-3 rounded-lg flex-row items-center justify-center shadow-sm"
+                >
+                  <Ionicons name="download-outline" size={15} color="#FFFFFF" />
+                  <Text className="text-white text-xs font-bold ml-1.5">Download v1.0.1 APK</Text>
+                </TouchableOpacity>
+                <Text
+                  numberOfLines={1}
+                  className="text-[10px] text-gray-400 mt-1.5 text-center"
+                  selectable
+                >
+                  https://billingapp-backend-hcan.onrender.com/api/download-apk
+                </Text>
+              </View>
             </View>
             <TouchableOpacity
               onPress={onLogout}
