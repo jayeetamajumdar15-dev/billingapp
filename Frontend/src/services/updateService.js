@@ -1,9 +1,21 @@
 import { Platform, Linking, Alert } from "react-native";
 import * as Updates from "expo-updates";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getApiBaseUrl } from "../config/api";
 
-export const CURRENT_APP_VERSION = "1.0.0";
+export const CURRENT_APP_VERSION = "1.0.1";
 export const GITHUB_RELEASES_URL = "https://billingapp-backend-hcan.onrender.com/api/download-apk";
+
+/**
+ * Mark a version as seen so repeat background notification popups are suppressed
+ */
+export async function markUpdateSeen(version) {
+  try {
+    if (version) {
+      await AsyncStorage.setItem("seen_update_version", String(version));
+    }
+  } catch {}
+}
 
 /**
  * Compare two semver strings: returns 1 if v1 > v2, -1 if v1 < v2, 0 if equal
@@ -67,6 +79,16 @@ export async function checkForAppUpdates(manual = false) {
       if (data && data.latestVersion) {
         const isNewer = compareVersions(data.latestVersion, CURRENT_APP_VERSION) > 0;
         if (isNewer) {
+          // If automatic startup check, suppress popup if user has already seen this version
+          if (!manual && !data.forceUpdate) {
+            try {
+              const seen = await AsyncStorage.getItem("seen_update_version");
+              if (seen === data.latestVersion) {
+                return { hasUpdate: false, type: null };
+              }
+            } catch {}
+          }
+
           return {
             hasUpdate: true,
             type: "apk",

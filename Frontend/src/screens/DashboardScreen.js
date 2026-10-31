@@ -452,11 +452,16 @@ export default function DashboardScreen({
       {/* Bill Detail Modal */}
       <Modal visible={!!selectedBill} animationType="slide" transparent={true} onRequestClose={() => setSelectedBill(null)}>
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" }}>
-          <View style={{ backgroundColor: "#FFFFFF", borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: "88%" }}>
+          <TouchableOpacity
+            style={{ flex: 1 }}
+            activeOpacity={1}
+            onPress={() => setSelectedBill(null)}
+          />
+          <View style={{ backgroundColor: "#FFFFFF", borderTopLeftRadius: 24, borderTopRightRadius: 24, height: "82%", maxHeight: "90%", width: "100%", display: "flex", flexDirection: "column" }}>
             {/* Header */}
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 18, borderBottomWidth: 1, borderBottomColor: "#F3F4F6" }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 18, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "#F3F4F6" }}>
               <View>
-                <Text style={{ fontSize: 16, fontWeight: "900", color: "#111827" }}>Bill #{selectedBill?.invoiceNumber}</Text>
+                <Text style={{ fontSize: 17, fontWeight: "900", color: "#111827" }}>Bill #{selectedBill?.invoiceNumber}</Text>
                 <Text style={{ fontSize: 11, color: "#6B7280", marginTop: 2 }}>
                   {selectedBill?.invoiceDate ? new Date(selectedBill.invoiceDate).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : ""}
                 </Text>
@@ -466,7 +471,7 @@ export default function DashboardScreen({
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 48 }} showsVerticalScrollIndicator={true}>
               {/* Customer Info */}
               {selectedBill?.partyName ? (
                 <View style={{ backgroundColor: "#EFF6FF", borderRadius: 12, padding: 12, marginBottom: 12, flexDirection: "row", alignItems: "center" }}>

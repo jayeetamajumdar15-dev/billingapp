@@ -20,6 +20,7 @@ import {
   checkForAppUpdates,
   applyOtaUpdate,
   openApkDownload,
+  markUpdateSeen,
 } from "./src/services/updateService";
 import UpdateModal from "./src/components/UpdateModal";
 import Toast from "react-native-toast-message";
@@ -62,6 +63,9 @@ export default function App() {
         if (update && update.hasUpdate) {
           setUpdateInfo(update);
           setShowUpdateModal(true);
+          if (update.version) {
+            markUpdateSeen(update.version);
+          }
         }
       } catch {}
     };
@@ -312,9 +316,13 @@ export default function App() {
         onApplyOta={applyOtaUpdate}
         onDownloadApk={(url) => {
           setShowUpdateModal(false);
+          if (updateInfo?.version) markUpdateSeen(updateInfo.version);
           openApkDownload(url);
         }}
-        onDismiss={() => setShowUpdateModal(false)}
+        onDismiss={() => {
+          setShowUpdateModal(false);
+          if (updateInfo?.version) markUpdateSeen(updateInfo.version);
+        }}
       />
       <Toast />
     </SafeAreaProvider>
