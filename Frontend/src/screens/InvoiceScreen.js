@@ -11,6 +11,7 @@ import {
   Linking,
   ActivityIndicator,
   Image,
+  Platform,
 } from "react-native";
 import { Ionicons, FontAwesome5, MaterialIcons } from "@expo/vector-icons";
 import { api } from "../config/api";

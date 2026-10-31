@@ -1,4 +1,5 @@
 import express from "express";
+import mongoose from "mongoose";
 import Invoice from "../models/Invoice.js";
 import Item from "../models/Item.js";
 import Party from "../models/Party.js";
@@ -527,7 +528,7 @@ router.post("/", async (req, res) => {
       console.warn("PDF generation warning:", pdfErr.message);
     }
     let autoSent = false;
-    if (destinationPhone) {
+    if (req.body.autoSendWhatsApp && destinationPhone) {
       autoSent = await sendAutomaticWhatsAppBill(
         destinationPhone,
         whatsappText,

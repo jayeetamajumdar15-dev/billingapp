@@ -393,39 +393,30 @@ export default function DashboardScreen({
                   <Text className="text-[10px] text-blue-500 font-bold">Tap to view full bill details →</Text>
                 </View>
               </View>
-              <View className="items-end justify-between">
-                <Text className="text-base font-extrabold text-gray-900 mb-1">
+              <View className="items-end justify-between ml-2">
+                <Text className="text-base font-black text-gray-900 mb-1">
                   Rs. {tx.grandTotal}
                 </Text>
-                <View className="flex-row items-center gap-1 mt-1">
+                <View className="flex-row items-center gap-1.5 mt-1">
                   <TouchableOpacity
                     onPress={(e) => {
                       e.stopPropagation && e.stopPropagation();
                       handleEditInvoice(tx);
                     }}
-                    className="bg-blue-50 border border-blue-200 px-2 py-1 rounded-lg flex-row items-center active:bg-blue-100"
+                    className="bg-blue-50 border border-blue-300 px-2.5 py-1.5 rounded-lg flex-row items-center active:bg-blue-100"
                   >
-                    <Ionicons name="create-outline" size={12} color="#2563EB" />
-                    <Text className="text-blue-800 text-[10px] font-bold ml-0.5">Edit</Text>
+                    <Ionicons name="create-outline" size={13} color="#2563EB" />
+                    <Text className="text-blue-800 text-[11px] font-bold ml-1">Edit</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={(e) => {
                       e.stopPropagation && e.stopPropagation();
                       handleDeleteInvoice(tx._id, tx.invoiceNumber);
                     }}
-                    className="bg-red-50 border border-red-200 px-2 py-1 rounded-lg flex-row items-center active:bg-red-100"
+                    className="bg-red-50 border border-red-300 px-2.5 py-1.5 rounded-lg flex-row items-center active:bg-red-100"
                   >
-                    <Ionicons name="trash-outline" size={12} color="#DC2626" />
-                    <Text className="text-red-700 text-[10px] font-bold ml-0.5">Del</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={async (e) => {
-                      e.stopPropagation && e.stopPropagation();
-                      await shareBackendPdf(tx, `Invoice_${tx.invoiceNumber || tx._id}.pdf`);
-                    }}
-                    className="bg-emerald-50 border border-emerald-300 px-2 py-1 rounded-lg flex-row items-center active:bg-emerald-100"
-                  >
-                    <FontAwesome5 name="whatsapp" size={11} color="#059669" />
+                    <Ionicons name="trash-outline" size={13} color="#DC2626" />
+                    <Text className="text-red-700 text-[11px] font-bold ml-1">Del</Text>
                   </TouchableOpacity>
                 </View>
               </View>
