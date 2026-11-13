@@ -2503,7 +2503,7 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved, editingInv
                     const isOccupied = t.status === "OCCUPIED";
                     const isBilled = t.status === "BILLED";
                     const isReserved = t.status === "RESERVED";
-                    const statusColor = isOccupied ? "#DC2626" : isBilled ? "#2563EB" : isReserved ? "#9333EA" : "#16A34A";
+                    const statusColor = isOccupied ? "#DC2626" : isBilled ? "#2563EB" : isReserved ? "#D97706" : "#16A34A";
 
                     return (
                       <TouchableOpacity

@@ -52,12 +52,12 @@ const STATUS_CONFIG = {
   },
   RESERVED: {
     label: "Reserved",
-    bg: "bg-purple-50",
-    border: "border-purple-300",
-    badgeBg: "bg-purple-100",
-    badgeText: "text-purple-700",
-    iconColor: "#7C3AED",
-    color: "#7C3AED",
+    bg: "bg-amber-50",
+    border: "border-amber-300",
+    badgeBg: "bg-amber-100",
+    badgeText: "text-amber-800",
+    iconColor: "#D97706",
+    color: "#D97706",
   },
 };
 
@@ -457,7 +457,7 @@ export default function TableScreen({
           { key: "AVAILABLE", label: "Available", count: availableCount, color: "#059669" },
           { key: "OCCUPIED", label: "Occupied", count: occupiedCount, color: "#DC2626" },
           { key: "BILLED", label: "Billed", count: billedCount, color: "#2563EB" },
-          { key: "RESERVED", label: "Reserved", count: reservedCount, color: "#7C3AED" },
+          { key: "RESERVED", label: "Reserved", count: reservedCount, color: "#D97706" },
         ].map((tab) => {
           const isSelected = selectedStatus === tab.key;
           return (
@@ -573,12 +573,12 @@ export default function TableScreen({
                     ) : null}
                   </View>
                 ) : table.status === "RESERVED" ? (
-                  <View className="my-2 bg-white/90 p-2 rounded-xl border border-purple-200">
-                    <Text className="text-[11px] font-bold text-purple-900" numberOfLines={1}>
+                  <View className="my-2 bg-white/90 p-2 rounded-xl border border-amber-200">
+                    <Text className="text-[11px] font-bold text-amber-900" numberOfLines={1}>
                       👤 {table.reservationName || "Reserved"}
                     </Text>
                     {table.reservationTime ? (
-                      <Text className="text-[10px] font-medium text-purple-700">
+                      <Text className="text-[10px] font-medium text-amber-700">
                         🕒 {table.reservationTime}
                       </Text>
                     ) : null}
@@ -681,10 +681,10 @@ export default function TableScreen({
 
                     <TouchableOpacity
                       onPress={() => setShowReserveModal(true)}
-                      className="w-full py-3 bg-purple-50 border border-purple-200 rounded-xl items-center flex-row justify-center"
+                      className="w-full py-3 bg-blue-50 border border-blue-200 rounded-xl items-center flex-row justify-center"
                     >
-                      <Ionicons name="calendar-outline" size={18} color="#7C3AED" style={{ marginRight: 6 }} />
-                      <Text className="text-purple-700 font-bold text-sm">
+                      <Ionicons name="calendar-outline" size={18} color="#2563EB" style={{ marginRight: 6 }} />
+                      <Text className="text-blue-700 font-bold text-sm">
                         Reserve Table
                       </Text>
                     </TouchableOpacity>
@@ -936,7 +936,7 @@ export default function TableScreen({
 
                 <TouchableOpacity
                   onPress={handleSaveReservation}
-                  className="flex-1 py-3 bg-purple-600 rounded-xl items-center active:bg-purple-700"
+                  className="flex-1 py-3 bg-blue-600 rounded-xl items-center active:bg-blue-700"
                 >
                   <Text className="font-bold text-white text-sm">Confirm Reserve</Text>
                 </TouchableOpacity>

@@ -599,7 +599,7 @@ export default function InventoryScreen({ user, isActive = true, onOpenDrawer, o
   return (
     <View style={{ flex: 1 }} className="flex-1 bg-slate-50">
       {/* ── Top Header ── */}
-      <View style={{ paddingTop: headerTopPadding }} className="bg-slate-900 px-4 pb-3 shadow-sm">
+      <View style={{ paddingTop: headerTopPadding }} className="bg-blue-600 px-4 pb-3 shadow-sm">
         <ResponsiveContainer maxWidth={1200}>
           <View className="flex-row items-center justify-between mb-2">
             <View className="flex-row items-center flex-1 pr-2">
@@ -615,14 +615,14 @@ export default function InventoryScreen({ user, isActive = true, onOpenDrawer, o
                 </TouchableOpacity>
               ) : null}
               <Text className="text-white text-lg font-black tracking-wide">Restaurant Inventory</Text>
-              <View className="bg-blue-600/90 px-2 py-0.5 rounded-full ml-2">
+              <View className="bg-white/20 border border-white/30 px-2 py-0.5 rounded-full ml-2">
                 <Text className="text-white text-[10px] font-extrabold">{items.length} items</Text>
               </View>
             </View>
 
-            <TouchableOpacity onPress={handleOpenAdd} className="bg-emerald-500 px-3 py-1.5 rounded-xl flex-row items-center shadow-xs">
-              <Ionicons name="add-circle" size={16} color="#FFFFFF" />
-              <Text className="text-white text-xs font-black ml-1">+ New Item</Text>
+            <TouchableOpacity onPress={handleOpenAdd} className="bg-white px-3 py-1.5 rounded-xl flex-row items-center shadow-xs">
+              <Ionicons name="add-circle" size={16} color="#2563EB" />
+              <Text className="text-blue-600 text-xs font-black ml-1">+ New Item</Text>
             </TouchableOpacity>
           </View>
         </ResponsiveContainer>
@@ -801,8 +801,8 @@ export default function InventoryScreen({ user, isActive = true, onOpenDrawer, o
                             Sell: Rs. {item.sellingPrice || 0} {item.costPrice > 0 ? `• Cost: Rs. ${item.costPrice}` : ""}
                           </Text>
                           {item.recipe && item.recipe.length > 0 ? (
-                            <View className="bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">
-                              <Text className="text-[9.5px] font-black text-purple-700">
+                            <View className="bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                              <Text className="text-[9.5px] font-black text-blue-700">
                                 🍳 {item.recipe.length} Ingredients
                               </Text>
                             </View>
@@ -844,7 +844,7 @@ export default function InventoryScreen({ user, isActive = true, onOpenDrawer, o
                         {item.itemType !== "RAW_MATERIAL" && (
                           <TouchableOpacity
                             onPress={() => handleOpenRecipeModal(item)}
-                            className="flex-1 bg-purple-600 py-2 rounded-xl flex-row items-center justify-center shadow-xs"
+                            className="flex-1 bg-blue-600 py-2 rounded-xl flex-row items-center justify-center shadow-xs"
                           >
                             <Ionicons name="list-circle-outline" size={14} color="#FFFFFF" />
                             <Text className="text-white text-xs font-black ml-1">
@@ -1217,17 +1217,17 @@ export default function InventoryScreen({ user, isActive = true, onOpenDrawer, o
             </View>
 
             <ScrollView className="flex-1 py-3" showsVerticalScrollIndicator={false}>
-              <View className="flex-row items-center justify-between bg-purple-50 p-3 rounded-2xl border border-purple-200 mb-3">
+              <View className="flex-row items-center justify-between bg-blue-50 p-3 rounded-2xl border border-blue-200 mb-3">
                 <View className="flex-1 mr-2">
-                  <Text className="text-xs font-black text-purple-900">Auto-Deduct Stock on Billing</Text>
-                  <Text className="text-[10px] text-purple-700">Deduct raw materials automatically when this dish is sold</Text>
+                  <Text className="text-xs font-black text-blue-900">Auto-Deduct Stock on Billing</Text>
+                  <Text className="text-[10px] text-blue-700">Deduct raw materials automatically when this dish is sold</Text>
                 </View>
-                <Switch value={autoDeductRecipe} onValueChange={setAutoDeductRecipe} trackColor={{ false: "#CBD5E1", true: "#C084FC" }} thumbColor={autoDeductRecipe ? "#9333EA" : "#94A3B8"} />
+                <Switch value={autoDeductRecipe} onValueChange={setAutoDeductRecipe} trackColor={{ false: "#CBD5E1", true: "#93C5FD" }} thumbColor={autoDeductRecipe ? "#2563EB" : "#94A3B8"} />
               </View>
 
               <View className="flex-row justify-between items-center mb-2">
                 <Text className="text-xs font-black text-slate-800 uppercase">Recipe Ingredients ({recipeIngredients.length})</Text>
-                <TouchableOpacity onPress={handleAddRecipeIngredient} className="bg-purple-600 px-2.5 py-1 rounded-lg flex-row items-center">
+                <TouchableOpacity onPress={handleAddRecipeIngredient} className="bg-blue-600 px-2.5 py-1 rounded-lg flex-row items-center">
                   <Ionicons name="add" size={13} color="#FFFFFF" />
                   <Text className="text-white text-[11px] font-black ml-1">+ Ingredient</Text>
                 </TouchableOpacity>
@@ -1272,7 +1272,7 @@ export default function InventoryScreen({ user, isActive = true, onOpenDrawer, o
             <TouchableOpacity
               onPress={handleSaveRecipe}
               disabled={savingRecipe}
-              className="w-full bg-purple-600 py-3 rounded-xl items-center shadow-xs flex-row justify-center"
+              className="w-full bg-blue-600 py-3 rounded-xl items-center shadow-xs flex-row justify-center"
             >
               {savingRecipe ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />

@@ -204,7 +204,7 @@ export default function ReportsScreen({ isActive = true, onOpenDrawer, onBack })
   return (
     <View style={{ flex: 1 }} className="flex-1 bg-slate-50">
       {/* ── Header ── */}
-      <View style={{ paddingTop: headerTopPadding }} className="bg-slate-900 px-4 pb-3 shadow-sm">
+      <View style={{ paddingTop: headerTopPadding }} className="bg-blue-600 px-4 pb-3 shadow-sm">
         <ResponsiveContainer maxWidth={1120} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
           <View className="flex-row items-center">
             {!isWide && (
@@ -216,7 +216,7 @@ export default function ReportsScreen({ isActive = true, onOpenDrawer, onBack })
               <Text className="text-white text-lg font-black tracking-wide">
                 Analytics & Reports
               </Text>
-              <Text className="text-slate-400 text-[10px] font-medium">
+              <Text className="text-blue-100 text-[10px] font-medium">
                 Real-time metrics, tax compliance & full catalog
               </Text>
             </View>
@@ -224,7 +224,7 @@ export default function ReportsScreen({ isActive = true, onOpenDrawer, onBack })
           <TouchableOpacity
             onPress={loadData}
             disabled={loading}
-            className="bg-slate-800 p-2 rounded-xl border border-slate-700"
+            className="bg-white/20 p-2 rounded-xl border border-white/30"
           >
             {loading ? (
               <ActivityIndicator size="small" color="#FFFFFF" />
@@ -935,9 +935,9 @@ export default function ReportsScreen({ isActive = true, onOpenDrawer, onBack })
             ) : (
               <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
                 <View style={{ flexDirection: "row", gap: 10, marginBottom: 14 }}>
-                  <View style={{ flex: 1, backgroundColor: "#EEF2FF", borderRadius: 14, padding: 12, borderWidth: 1, borderColor: "#C7D2FE" }}>
-                    <Text style={{ fontSize: 10, fontWeight: "800", color: "#4338CA", textTransform: "uppercase" }}>Categories</Text>
-                    <Text style={{ fontSize: 20, fontWeight: "900", color: "#312E81", marginTop: 2 }}>
+                  <View style={{ flex: 1, backgroundColor: "#EFF6FF", borderRadius: 14, padding: 12, borderWidth: 1, borderColor: "#BFDBFE" }}>
+                    <Text style={{ fontSize: 10, fontWeight: "800", color: "#1D4ED8", textTransform: "uppercase" }}>Categories</Text>
+                    <Text style={{ fontSize: 20, fontWeight: "900", color: "#1E3A8A", marginTop: 2 }}>
                       {(categorySalesData?.yearlyCategorySummary || categorySalesData?.yearly || []).length}
                     </Text>
                   </View>

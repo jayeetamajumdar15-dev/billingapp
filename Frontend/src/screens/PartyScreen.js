@@ -788,7 +788,7 @@ export default function PartyScreen({ user, isActive = true, onProfileUpdated, o
                       </Text>
                     ) : null}
                     {item.assignedFreebie ? (
-                      <Text className="text-[11px] text-purple-700 font-bold">
+                      <Text className="text-[11px] text-blue-700 font-bold">
                         Free: {item.assignedFreebie}
                       </Text>
                     ) : null}
