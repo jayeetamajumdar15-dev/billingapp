@@ -5,6 +5,8 @@ import Invoice from "../models/Invoice.js";
 import Item from "../models/Item.js";
 import Party from "../models/Party.js";
 import User from "../models/User.js";
+import Table from "../models/Table.js";
+import Area from "../models/Area.js";
 import { protect } from "../middleware/authMiddleware.js";
 import { sendWhatsAppMessage, sendWhatsAppDocument, normalizeWhatsAppNumber } from "../services/whatsappService.js";
 import { generateInvoicePdfBuffer } from "../services/pdfService.js";
@@ -557,6 +559,17 @@ router.post("/", async (req, res) => {
       customDiscountPercent = 0,
       customFreebieItem = "",
       notes,
+      areaId,
+      areaName,
+      tableId,
+      tableName,
+      pax = 1,
+      serviceChargeRate,
+      tableStatus = "SETTLED",
+      fssaiNumber,
+      printRestaurantLogo,
+      showDynamicUpiQr,
+      billFooterMessage,
     } = req.body;
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ success: false, message: "At least one item is required" });
@@ -648,10 +661,26 @@ router.post("/", async (req, res) => {
         });
       }
     }
+    // Compute Area Service Tax / Service Charge (Petpooja style)
+    let finalServiceChargeRate = 0;
+    let resolvedAreaName = (areaName || "").trim();
+    if (serviceChargeRate !== undefined) {
+      finalServiceChargeRate = Math.max(0, Number(serviceChargeRate) || 0);
+    } else if (areaId) {
+      try {
+        const matchedArea = await Area.findById(areaId).select("serviceChargeRate name").lean();
+        if (matchedArea) {
+          finalServiceChargeRate = matchedArea.serviceChargeRate || 0;
+          if (!resolvedAreaName) resolvedAreaName = matchedArea.name;
+        }
+      } catch {}
+    }
+    const serviceChargeAmount = Math.round((calculatedSubtotal * finalServiceChargeRate) / 100 * 100) / 100;
+
     const totalDiscountRate = regularDiscountPercent + (Number(additionalDiscountPercent) || 0);
     const discountAmount = Math.round((calculatedSubtotal * totalDiscountRate) / 100 * 100) / 100;
     const regularDiscountAmount = Math.round((calculatedSubtotal * regularDiscountPercent) / 100 * 100) / 100;
-    const totalBeforeRound = calculatedSubtotal + calculatedTaxTotal - discountAmount;
+    const totalBeforeRound = calculatedSubtotal + calculatedTaxTotal + serviceChargeAmount - discountAmount;
     const grandTotal = Math.round(totalBeforeRound);
     const roundOff = Math.round((grandTotal - totalBeforeRound) * 100) / 100;
     const invoiceNumber = await getNextDailyInvoiceNumber(req.user._id);
@@ -699,6 +728,8 @@ router.post("/", async (req, res) => {
       freebieItemGiven: freebieItem,
       subtotal: calculatedSubtotal,
       taxTotal: calculatedTaxTotal,
+      serviceChargeRate: finalServiceChargeRate,
+      serviceChargeAmount,
       discountTotal: discountAmount,
       roundOff,
       grandTotal,
@@ -714,8 +745,40 @@ router.post("/", async (req, res) => {
       whatsappSent: false,
       googleMapLocation: (req.body.googleMapLocation || req.user?.googleMapLocation || "").trim(),
       showGoogleMapOnBill: shouldShowMapRequested,
+      areaId: areaId || undefined,
+      areaName: resolvedAreaName,
+      tableId: tableId || undefined,
+      tableName: (tableName || "").trim(),
+      pax: Number(pax) || 1,
+      tableStatus: tableStatus || "SETTLED",
+      fssaiNumber: (fssaiNumber || req.user?.fssaiNumber || "").trim(),
+      printRestaurantLogo: printRestaurantLogo !== undefined ? Boolean(printRestaurantLogo) : req.user?.printRestaurantLogo !== false,
+      showDynamicUpiQr: showDynamicUpiQr !== undefined ? Boolean(showDynamicUpiQr) : req.user?.showDynamicUpiQr !== false,
+      billFooterMessage: (billFooterMessage || req.user?.billFooterMessage || "").trim(),
       notes,
     });
+
+    // Update real-time Table status & live order reference
+    if (tableId) {
+      const isRunning = tableStatus === "RUNNING";
+      await Table.findOneAndUpdate(
+        { _id: tableId, userId: req.user._id },
+        {
+          $set: {
+            status: isRunning ? "OCCUPIED" : "AVAILABLE",
+            currentInvoiceId: isRunning ? invoice._id : null,
+            currentInvoiceNumber: isRunning ? invoice.invoiceNumber : "",
+            runningTotal: isRunning ? grandTotal : 0,
+            itemsCount: isRunning ? processedItems.length : 0,
+            pax: Number(pax) || 1,
+            customerName: (customer ? customer.name : partyName) || "",
+            customerPhone: destinationPhone || "",
+            seatedAt: isRunning ? (req.body.seatedAt || new Date()) : null,
+            notes: notes || "",
+          },
+        }
+      ).catch(() => {});
+    }
     if (stockUpdates.length > 0) {
       await Item.bulkWrite(stockUpdates, { ordered: false });
     }

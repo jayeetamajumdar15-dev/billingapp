@@ -168,6 +168,60 @@ const invoiceSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    areaId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Area",
+    },
+    areaName: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    tableId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Table",
+    },
+    tableName: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    pax: {
+      type: Number,
+      default: 1,
+    },
+    serviceChargeRate: {
+      type: Number,
+      default: 0,
+    },
+    serviceChargeAmount: {
+      type: Number,
+      default: 0,
+    },
+    tableStatus: {
+      type: String,
+      enum: ["RUNNING", "BILLED", "SETTLED"],
+      default: "SETTLED",
+      index: true,
+    },
+    fssaiNumber: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    printRestaurantLogo: {
+      type: Boolean,
+      default: true,
+    },
+    showDynamicUpiQr: {
+      type: Boolean,
+      default: true,
+    },
+    billFooterMessage: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     notes: {
       type: String,
       trim: true,

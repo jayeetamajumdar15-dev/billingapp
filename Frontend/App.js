@@ -15,6 +15,7 @@ import DashboardScreen from "./src/screens/DashboardScreen";
 import PartyScreen from "./src/screens/PartyScreen";
 import InventoryScreen from "./src/screens/InventoryScreen";
 import InvoiceScreen from "./src/screens/InvoiceScreen";
+import TableScreen from "./src/screens/TableScreen";
 import SettingsScreen from "./src/screens/SettingsScreen";
 import ReportsScreen from "./src/screens/ReportsScreen";
 import MarketingScreen from "./src/screens/MarketingScreen";
@@ -30,6 +31,7 @@ import Toast from "react-native-toast-message";
 
 const NAV_TABS = [
   { key: "dashboard", label: "Dashboard", icon: "home", iconOutline: "home-outline" },
+  { key: "tables", label: "Tables", icon: "restaurant", iconOutline: "restaurant-outline" },
   { key: "reports", label: "Reports", icon: "bar-chart", iconOutline: "bar-chart-outline" },
   { key: "party", label: "Party", icon: "people", iconOutline: "people-outline" },
   { key: "inventory", label: "Inventory", icon: "cube", iconOutline: "cube-outline" },
@@ -44,6 +46,7 @@ export default function App() {
   const [visitedTabs, setVisitedTabs] = useState({ dashboard: true });
   const [isCreatingInvoice, setIsCreatingInvoice] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState(null);
+  const [tableForInvoice, setTableForInvoice] = useState(null);
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [user, setUser] = useState(null);
   const [updateInfo, setUpdateInfo] = useState(null);
@@ -52,6 +55,7 @@ export default function App() {
   const navigateTab = (tab) => {
     setActiveTab(tab);
     setIsCreatingInvoice(false);
+    setTableForInvoice(null);
     setVisitedTabs((prev) => (prev[tab] ? prev : { ...prev, [tab]: true }));
   };
 
@@ -177,6 +181,7 @@ export default function App() {
   const handleInvoiceSaved = () => {
     setIsCreatingInvoice(false);
     setEditingInvoice(null);
+    setTableForInvoice(null);
     navigateTab("dashboard");
     prefetchCoreData().catch(() => {});
   };
@@ -322,9 +327,11 @@ export default function App() {
                 <InvoiceScreen
                   user={user}
                   editingInvoice={editingInvoice}
+                  initialTable={tableForInvoice}
                   onBack={() => {
                     setIsCreatingInvoice(false);
                     setEditingInvoice(null);
+                    setTableForInvoice(null);
                   }}
                   onInvoiceSaved={handleInvoiceSaved}
                 />
@@ -339,11 +346,37 @@ export default function App() {
                         onNavigateTab={navigateTab}
                         onCreateInvoice={() => {
                           setEditingInvoice(null);
+                          setTableForInvoice(null);
                           setIsCreatingInvoice(true);
                         }}
                         onEditInvoice={(inv) => {
                           setEditingInvoice(inv);
+                          setTableForInvoice(null);
                           setIsCreatingInvoice(true);
+                        }}
+                      />
+                    </View>
+                  )}
+
+                  {visitedTabs.tables && (
+                    <View style={{ flex: 1, display: activeTab === "tables" ? "flex" : "none" }}>
+                      <TableScreen
+                        user={user}
+                        isActive={activeTab === "tables" && !isCreatingInvoice}
+                        onOpenDrawer={() => setDrawerVisible(true)}
+                        onBack={() => navigateTab("dashboard")}
+                        onStartOrder={(table) => {
+                          setEditingInvoice(null);
+                          setTableForInvoice(table);
+                          setIsCreatingInvoice(true);
+                        }}
+                        onOpenInvoice={(invoiceId) => {
+                          api.invoices.getById(invoiceId).then((res) => {
+                            if (res?.success && res.invoice) {
+                              setEditingInvoice(res.invoice);
+                              setIsCreatingInvoice(true);
+                            }
+                          }).catch(() => {});
                         }}
                       />
                     </View>

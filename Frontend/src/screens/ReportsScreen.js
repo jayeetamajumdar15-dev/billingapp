@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
+  TextInput,
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
@@ -15,10 +16,11 @@ import { downloadReportFile } from "../utils/reportDownloader";
 import { shareBackendPdf } from "../utils/receiptPdfGenerator";
 import { getCachedData, setCachedData, getMemoryCachedData } from "../utils/localCache";
 import { useResponsive, ResponsiveContainer } from "../utils/responsive";
+import { REPORTS_CATALOG, REPORT_CATEGORIES } from "../data/reportsCatalog";
 
 export default function ReportsScreen({ isActive = true, onOpenDrawer, onBack }) {
   const { isWide, headerTopPadding } = useResponsive();
-  const [reportType, setReportType] = useState("sales");
+  const [reportType, setReportType] = useState("hub");
   const [period, setPeriod] = useState("today");
   const [topDays, setTopDays] = useState(365);
   const [loading, setLoading] = useState(false);
@@ -29,6 +31,20 @@ export default function ReportsScreen({ isActive = true, onOpenDrawer, onBack })
   const [topItemsData, setTopItemsData] = useState(() => getMemoryCachedData("reports_topItems_365")?.topItems || []);
   const [overallTopData, setOverallTopData] = useState(() => getMemoryCachedData("reports_topItems_365")?.overallTop || []);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
+
+  // 55+ Reports Hub State
+  const [hubSearch, setHubSearch] = useState("");
+  const [hubCategory, setHubCategory] = useState("all");
+  const [hubPeriod, setHubPeriod] = useState("today");
+  const [catalogReports, setCatalogReports] = useState(REPORTS_CATALOG);
+  const [catalogCategories, setCatalogCategories] = useState(REPORT_CATEGORIES);
+  const [loadingCatalog, setLoadingCatalog] = useState(false);
+
+  // Active Report Viewer Modal State
+  const [activeReportModal, setActiveReportModal] = useState(null);
+  const [reportResultData, setReportResultData] = useState(null);
+  const [loadingReportRun, setLoadingReportRun] = useState(false);
+  const [downloadingReport, setDownloadingReport] = useState(false);
 
   // Category sales modal state
   const [showCategoryModal, setShowCategoryModal] = useState(false);
@@ -108,8 +124,53 @@ export default function ReportsScreen({ isActive = true, onOpenDrawer, onBack })
   useEffect(() => {
     if (isActive) {
       loadData();
+      if (catalogReports.length === 0) {
+        setLoadingCatalog(true);
+        api.reports
+          .getCatalog()
+          .then((res) => {
+            if (res?.success && Array.isArray(res.reports)) {
+              setCatalogReports(res.reports);
+              setCatalogCategories(res.categories || []);
+            }
+          })
+          .catch(() => {})
+          .finally(() => setLoadingCatalog(false));
+      }
     }
   }, [reportType, period, topDays, isActive]);
+
+  const handleOpenReportViewer = async (report) => {
+    setActiveReportModal(report);
+    setLoadingReportRun(true);
+    setReportResultData(null);
+    try {
+      const res = await api.reports.runReport(report.id, `period=${hubPeriod}`);
+      if (res?.success) {
+        setReportResultData(res);
+      } else {
+        Alert.alert("Report Notice", res?.message || "Could not generate report data.");
+      }
+    } catch (err) {
+      Alert.alert("Report Error", err.message || "Failed to load report data.");
+    } finally {
+      setLoadingReportRun(false);
+    }
+  };
+
+  const handleDownloadHubReport = async (report, format = "pdf") => {
+    setDownloadingReport(true);
+    try {
+      const url = api.reports.getExportUrl(report.id, format, `period=${hubPeriod}`);
+      const filename = `${report.title.replace(/[^a-zA-Z0-9_-]/g, "_")}_${hubPeriod}.${format}`;
+      const mime = format === "pdf" ? "application/pdf" : "text/csv";
+      await downloadReportFile(url, filename, mime);
+    } catch (err) {
+      Alert.alert("Download Notice", err.message || "Failed to download report file.");
+    } finally {
+      setDownloadingReport(false);
+    }
+  };
 
   const handleOpenCategorySales = async () => {
     setShowCategoryModal(true);
@@ -187,6 +248,25 @@ export default function ReportsScreen({ isActive = true, onOpenDrawer, onBack })
       </View>
       <View className="bg-white border-b border-slate-200 px-2 py-2">
         <ResponsiveContainer maxWidth={1120} style={{ flexDirection: "row", justifyContent: "space-around" }}>
+        <TouchableOpacity
+          onPress={() => setReportType("hub")}
+          className={`flex-1 py-2 rounded-xl items-center flex-row justify-center mx-1 ${
+            reportType === "hub" ? "bg-blue-600 shadow-sm" : "bg-slate-100"
+          }`}
+        >
+          <Ionicons
+            name="apps"
+            size={14}
+            color={reportType === "hub" ? "#FFFFFF" : "#475569"}
+          />
+          <Text
+            className={`text-xs font-black ml-1.5 ${
+              reportType === "hub" ? "text-white" : "text-slate-700"
+            }`}
+          >
+            55+ Hub
+          </Text>
+        </TouchableOpacity>
         <TouchableOpacity
           onPress={() => setReportType("sales")}
           className={`flex-1 py-2 rounded-xl items-center flex-row justify-center mx-1 ${
@@ -274,6 +354,178 @@ export default function ReportsScreen({ isActive = true, onOpenDrawer, onBack })
         refreshControl={<RefreshControl refreshing={loading} onRefresh={loadData} />}
       >
         <ResponsiveContainer maxWidth={1120}>
+        {reportType === "hub" && (
+          <View className="mb-6">
+            {/* Search and Period Bar */}
+            <View className="bg-white p-3 rounded-2xl border border-gray-200 shadow-sm mb-4">
+              <View className="flex-row items-center bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 mb-3">
+                <Ionicons name="search" size={18} color="#6B7280" />
+                <TextInput
+                  className="flex-1 text-xs text-gray-900 ml-2 font-medium"
+                  placeholder="Search 55+ reports by name, category, or keyword..."
+                  value={hubSearch}
+                  onChangeText={setHubSearch}
+                  placeholderTextColor="#9CA3AF"
+                />
+                {hubSearch ? (
+                  <TouchableOpacity onPress={() => setHubSearch("")} className="p-1">
+                    <Ionicons name="close-circle" size={16} color="#9CA3AF" />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+
+              {/* Time Period Filter Pills */}
+              <View className="flex-row gap-1.5 flex-wrap">
+                {[
+                  { id: "today", label: "Today" },
+                  { id: "yesterday", label: "Yesterday" },
+                  { id: "week", label: "Last 7 Days" },
+                  { id: "month", label: "This Month" },
+                  { id: "365", label: "Yearly (365d)" },
+                ].map((p) => {
+                  const isSelected = hubPeriod === p.id;
+                  return (
+                    <TouchableOpacity
+                      key={p.id}
+                      onPress={() => setHubPeriod(p.id)}
+                      style={{
+                        backgroundColor: isSelected ? "#2563EB" : "#F1F5F9",
+                        borderColor: isSelected ? "#2563EB" : "#E2E8F0",
+                      }}
+                      className="px-3 py-1.5 rounded-lg border items-center justify-center flex-1"
+                    >
+                      <Text className={`text-[11px] font-bold ${isSelected ? "text-white" : "text-gray-700"}`}>
+                        {p.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* Category Filter Pills (Horizontal Scroll) */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4">
+              {catalogCategories.map((c) => {
+                const isSelected = hubCategory === c.id;
+                return (
+                  <TouchableOpacity
+                    key={c.id}
+                    onPress={() => setHubCategory(c.id)}
+                    style={{
+                      backgroundColor: isSelected ? "#1E293B" : "#FFFFFF",
+                      borderColor: isSelected ? "#1E293B" : "#CBD5E1",
+                    }}
+                    className="flex-row items-center px-3.5 py-2 rounded-xl border mr-2 shadow-xs"
+                  >
+                    <Ionicons
+                      name={c.icon || "apps"}
+                      size={14}
+                      color={isSelected ? "#FFFFFF" : "#64748B"}
+                      style={{ marginRight: 6 }}
+                    />
+                    <Text className={`text-xs font-black ${isSelected ? "text-white" : "text-gray-800"}`}>
+                      {c.label} ({c.count})
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            {/* Active Count & Export Notice */}
+            <View className="flex-row items-center justify-between px-1 mb-3">
+              <Text className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                Available Reports ({catalogReports.filter((r) => (hubCategory === "all" || r.category === hubCategory) && (!hubSearch.trim() || r.title?.toLowerCase().includes(hubSearch.toLowerCase()) || r.description?.toLowerCase().includes(hubSearch.toLowerCase()))).length})
+              </Text>
+              <Text className="text-[11px] font-semibold text-blue-600">
+                Period: {hubPeriod.toUpperCase()}
+              </Text>
+            </View>
+
+            {/* Reports Grid */}
+            <View className="flex-row flex-wrap justify-between gap-y-3">
+              {catalogReports
+                .filter((r) => {
+                  const matchesCat = hubCategory === "all" || r.category === hubCategory;
+                  const matchesSearch = hubSearch.trim()
+                    ? r.title?.toLowerCase().includes(hubSearch.toLowerCase()) ||
+                      r.description?.toLowerCase().includes(hubSearch.toLowerCase()) ||
+                      r.category?.toLowerCase().includes(hubSearch.toLowerCase())
+                    : true;
+                  return matchesCat && matchesSearch;
+                })
+                .map((report) => (
+                  <View
+                    key={report.id}
+                    style={{
+                      width: isWide ? "48.8%" : "100%",
+                      backgroundColor: "#FFFFFF",
+                      borderRadius: 16,
+                      borderWidth: 1,
+                      borderColor: "#E2E8F0",
+                      padding: 14,
+                      shadowColor: "#000",
+                      shadowOffset: { width: 0, height: 1 },
+                      shadowOpacity: 0.04,
+                      shadowRadius: 3,
+                      elevation: 1,
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <View>
+                      <View className="flex-row items-center justify-between mb-2">
+                        <View className="flex-row items-center flex-1 mr-2">
+                          <View style={{ backgroundColor: "#EFF6FF" }} className="w-8 h-8 rounded-xl items-center justify-center mr-2.5">
+                            <Ionicons name={report.icon || "document-text"} size={16} color="#2563EB" />
+                          </View>
+                          <Text className="text-sm font-extrabold text-gray-900 flex-1" numberOfLines={1}>
+                            {report.title}
+                          </Text>
+                        </View>
+                        <View style={{ backgroundColor: "#F1F5F9" }} className="px-2 py-0.5 rounded-full border border-gray-200">
+                          <Text className="text-[10px] font-extrabold text-gray-600 uppercase">
+                            {report.category}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <Text className="text-xs text-gray-600 mb-3 leading-relaxed" numberOfLines={2}>
+                        {report.description}
+                      </Text>
+                    </View>
+
+                    <View className="flex-row gap-2 pt-2 border-t border-gray-100">
+                      <TouchableOpacity
+                        onPress={() => handleOpenReportViewer(report)}
+                        className="flex-1 bg-blue-600 py-2 rounded-xl flex-row items-center justify-center shadow-xs"
+                      >
+                        <Ionicons name="eye-outline" size={14} color="#FFFFFF" />
+                        <Text className="text-white text-xs font-extrabold ml-1.5">View</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() => handleDownloadHubReport(report, "pdf")}
+                        disabled={downloadingReport}
+                        className="px-3 py-2 rounded-xl border border-gray-300 bg-gray-50 flex-row items-center justify-center"
+                      >
+                        <Ionicons name="document-text-outline" size={14} color="#DC2626" />
+                        <Text className="text-gray-800 text-xs font-bold ml-1">PDF</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() => handleDownloadHubReport(report, "csv")}
+                        disabled={downloadingReport}
+                        className="px-3 py-2 rounded-xl border border-gray-300 bg-gray-50 flex-row items-center justify-center"
+                      >
+                        <Ionicons name="download-outline" size={14} color="#059669" />
+                        <Text className="text-gray-800 text-xs font-bold ml-1">CSV</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+            </View>
+          </View>
+        )}
+
         {reportType === "sales" && (
           <View className="flex-row gap-2 mb-4">
             {[
@@ -302,6 +554,7 @@ export default function ReportsScreen({ isActive = true, onOpenDrawer, onBack })
             ))}
           </View>
         )}
+        {reportType !== "hub" && (
         <View className="bg-white rounded-2xl p-4 mb-4 border border-gray-200 shadow-sm">
           <Text className="text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">
             Download Report File
@@ -326,6 +579,7 @@ export default function ReportsScreen({ isActive = true, onOpenDrawer, onBack })
             )}
           </TouchableOpacity>
         </View>
+        )}
         {reportType === "sales" && salesData && (
           <View className="mb-4">
             <View className="flex-row gap-2.5 mb-2.5">
@@ -1068,6 +1322,155 @@ export default function ReportsScreen({ isActive = true, onOpenDrawer, onBack })
                   })}
               </ScrollView>
             )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* ────────────────── 55+ REPORT VIEWER MODAL ────────────────── */}
+      <Modal
+        visible={Boolean(activeReportModal)}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setActiveReportModal(null)}
+      >
+        <View className="flex-1 bg-black/60 justify-center items-center px-3 py-6">
+          <View style={{ width: "100%", maxWidth: 840, maxHeight: "90%" }} className="bg-white rounded-3xl p-5 shadow-2xl flex-1">
+            {/* Header */}
+            <View className="flex-row items-center justify-between pb-3 border-b border-gray-200">
+              <View className="flex-row items-center flex-1 mr-2">
+                <View style={{ backgroundColor: "#EFF6FF" }} className="w-9 h-9 rounded-xl items-center justify-center mr-2.5">
+                  <Ionicons name={activeReportModal?.icon || "document-text"} size={18} color="#2563EB" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-base font-black text-gray-900" numberOfLines={1}>
+                    {activeReportModal?.title}
+                  </Text>
+                  <Text className="text-xs text-gray-500" numberOfLines={1}>
+                    {activeReportModal?.category?.toUpperCase()} • Period: {hubPeriod.toUpperCase()}
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity onPress={() => setActiveReportModal(null)} className="p-1">
+                <Ionicons name="close" size={24} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            {loadingReportRun ? (
+              <View className="flex-1 items-center justify-center py-12">
+                <ActivityIndicator size="large" color="#2563EB" />
+                <Text className="text-xs font-bold text-gray-500 mt-3">Computing report analytics...</Text>
+              </View>
+            ) : reportResultData ? (
+              <ScrollView className="flex-1 pt-3" showsVerticalScrollIndicator={false}>
+                {/* Summary KPI Cards */}
+                {reportResultData.summary && reportResultData.summary.length > 0 && (
+                  <View className="flex-row flex-wrap gap-2 mb-4">
+                    {reportResultData.summary.map((kpi, idx) => (
+                      <View
+                        key={idx}
+                        style={{
+                          flex: 1,
+                          minWidth: 120,
+                          backgroundColor: "#F8FAFC",
+                          borderRadius: 14,
+                          padding: 12,
+                          borderWidth: 1,
+                          borderColor: "#E2E8F0",
+                        }}
+                      >
+                        <Text className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">
+                          {kpi.label}
+                        </Text>
+                        <Text style={{ color: kpi.color || "#0F172A" }} className="text-base font-black">
+                          {kpi.value}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Table View */}
+                <View className="border border-gray-200 rounded-2xl overflow-hidden mb-4 bg-white shadow-xs">
+                  {/* Table Header */}
+                  <View className="bg-slate-900 flex-row px-3 py-2.5">
+                    {reportResultData.columns.map((col) => (
+                      <Text
+                        key={col.key}
+                        style={{
+                          flex: 1,
+                          textAlign: col.align || "left",
+                          color: "#FFFFFF",
+                          fontSize: 11,
+                          fontWeight: "800",
+                        }}
+                        numberOfLines={1}
+                      >
+                        {col.label}
+                      </Text>
+                    ))}
+                  </View>
+
+                  {/* Rows */}
+                  {reportResultData.rows.length === 0 ? (
+                    <View className="py-8 items-center justify-center">
+                      <Ionicons name="file-tray-outline" size={28} color="#94A3B8" />
+                      <Text className="text-xs text-gray-400 mt-2 font-medium">
+                        No transactions recorded for this period.
+                      </Text>
+                    </View>
+                  ) : (
+                    reportResultData.rows.map((row, rIdx) => (
+                      <View
+                        key={rIdx}
+                        style={{
+                          backgroundColor: rIdx % 2 === 0 ? "#FFFFFF" : "#F8FAFC",
+                          borderTopWidth: 1,
+                          borderTopColor: "#F1F5F9",
+                        }}
+                        className="flex-row items-center px-3 py-2.5"
+                      >
+                        {reportResultData.columns.map((col) => (
+                          <Text
+                            key={col.key}
+                            style={{
+                              flex: 1,
+                              textAlign: col.align || "left",
+                              color: "#1E293B",
+                              fontSize: 11,
+                              fontWeight: col.align === "right" ? "700" : "500",
+                            }}
+                            numberOfLines={1}
+                          >
+                            {row[col.key] !== undefined && row[col.key] !== null ? String(row[col.key]) : "--"}
+                          </Text>
+                        ))}
+                      </View>
+                    ))
+                  )}
+                </View>
+              </ScrollView>
+            ) : null}
+
+            {/* Modal Footer with Instant PDF / CSV Download Buttons */}
+            <View className="pt-3 border-t border-gray-200 flex-row gap-3">
+              <TouchableOpacity
+                onPress={() => handleDownloadHubReport(activeReportModal, "pdf")}
+                disabled={downloadingReport}
+                className="flex-1 bg-red-600 py-3 rounded-xl flex-row items-center justify-center shadow-xs"
+              >
+                <Ionicons name="document-text" size={16} color="#FFFFFF" />
+                <Text className="text-white text-xs font-black ml-2">Download PDF Report</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => handleDownloadHubReport(activeReportModal, "csv")}
+                disabled={downloadingReport}
+                className="flex-1 bg-emerald-600 py-3 rounded-xl flex-row items-center justify-center shadow-xs"
+              >
+                <Ionicons name="download" size={16} color="#FFFFFF" />
+                <Text className="text-white text-xs font-black ml-2">Download Excel / CSV</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>

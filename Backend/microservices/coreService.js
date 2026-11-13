@@ -2,10 +2,11 @@ import authRoutes from "../routes/authRoutes.js";
 import partyRoutes from "../routes/partyRoutes.js";
 import itemRoutes from "../routes/itemRoutes.js";
 import dashboardRoutes from "../routes/dashboardRoutes.js";
+import tableRoutes from "../routes/tableRoutes.js";
 import { createServiceApp } from "./createServiceApp.js";
 
 /**
- * Core API & Catalog Microservice (Auth, Parties, Inventory, Dashboard).
+ * Core API & Catalog Microservice (Auth, Parties, Inventory, Dashboard, Tables).
  */
 const app = createServiceApp({
   serviceName: "core-service",
@@ -15,6 +16,7 @@ const app = createServiceApp({
     server.use("/api/parties", partyRoutes);
     server.use("/api/items", itemRoutes);
     server.use("/api/dashboard", dashboardRoutes);
+    server.use("/api/tables", tableRoutes);
   },
 });
 

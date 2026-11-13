@@ -48,7 +48,7 @@ export async function shareBackendPdf(invoice, fileName = null) {
   if (!token) {
     try {
       token = await loadStoredToken();
-    } catch {}
+    } catch { }
   }
 
   const baseUrl = getApiBaseUrl();
@@ -80,7 +80,7 @@ export async function shareBackendPdf(invoice, fileName = null) {
         } else {
           Linking.openURL(pdfUrl);
         }
-      } catch {}
+      } catch { }
       return { success: true };
     }
   }
@@ -366,12 +366,12 @@ function buildCustomerReceiptCard(invoice, storeInfo = {}, options = {}, copyTit
             ? "[RETAIL PRODUCT]"
             : `[${pQty} RETAIL, ${qty - pQty} SERVICE]`
           : bType === "retail" || bType === "general"
-          ? pQty >= qty
-            ? "[TAKEAWAY]"
-            : `[${pQty} TAKEAWAY, ${qty - pQty} IN-STORE]`
-          : pQty >= qty
-          ? "[PARCEL]"
-          : `[${pQty} PARCEL, ${qty - pQty} DINE-IN]`;
+            ? pQty >= qty
+              ? "[TAKEAWAY]"
+              : `[${pQty} TAKEAWAY, ${qty - pQty} IN-STORE]`
+            : pQty >= qty
+              ? "[PARCEL]"
+              : `[${pQty} PARCEL, ${qty - pQty} DINE-IN]`;
       parcelTag = `<div style="font-size:9px;color:#059669;font-weight:800;">${tagText}</div>`;
     }
     const rate = it.sellingPrice || it.rate || 0;
@@ -390,18 +390,20 @@ function buildCustomerReceiptCard(invoice, storeInfo = {}, options = {}, copyTit
     paymentMode === "CREDIT"
       ? "Credit Sale (Due)"
       : paymentMode === "UPI"
-      ? "UPI Sale"
-      : paymentMode === "UPI/CASH"
-      ? "Split Sale (Cash + UPI)"
-      : `${paymentMode === "CASH" ? "Cash" : paymentMode} Sale`;
+        ? "UPI Sale"
+        : paymentMode === "UPI/CASH"
+          ? "Split Sale (Cash + UPI)"
+          : `${paymentMode === "CASH" ? "Cash" : paymentMode} Sale`;
 
   let paymentBreakdown = "";
   if (paymentMode === "UPI/CASH") {
     paymentBreakdown = `<tr><td colspan="3" style="padding:1px 0">Cash</td><td style="text-align:right">Rs. ${invoice?.cashAmount || 0}</td></tr><tr><td colspan="3" style="padding:1px 0">UPI</td><td style="text-align:right">Rs. ${invoice?.upiAmount || 0}</td></tr>`;
   }
 
-  const logoHtml = showLogo && logo ? `<div style="text-align:center;margin-bottom:6px"><img src="${logo}" style="width:${isNarrow ? "56px" : "76px"};height:${isNarrow ? "56px" : "76px"};object-fit:contain;border-radius:6px" /></div>` : "";
+  const logoHtml = showLogo && (logo || storeInfo?.logo) ? `<div style="text-align:center;margin-bottom:6px"><img src="${logo || storeInfo.logo}" style="width:${isNarrow ? "56px" : "76px"};height:${isNarrow ? "56px" : "76px"};object-fit:contain;border-radius:6px" /></div>` : "";
   const gstinHtml = showGstin && gstin ? `<div>GSTIN: ${gstin}</div>` : "";
+  const fssaiNumber = storeInfo?.fssaiNumber || invoice?.fssaiNumber || "";
+  const fssaiHtml = fssaiNumber ? `<div>FSSAI Lic: ${fssaiNumber}</div>` : "";
   const emailHtml = showEmail && email ? `<div>@: ${email}</div>` : "";
 
   const createdOn = formatReceiptDate(invoice?.createdAt || invoice?.invoiceDate);
@@ -411,8 +413,8 @@ function buildCustomerReceiptCard(invoice, storeInfo = {}, options = {}, copyTit
     custName && custName !== "Walk-in Customer"
       ? `<div class="meta">Bill To: ${custName}${custPhone ? " | " + custPhone : ""}</div>`
       : custPhone
-      ? `<div class="meta">Phone: ${custPhone}</div>`
-      : "";
+        ? `<div class="meta">Phone: ${custPhone}</div>`
+        : "";
 
   const discountRow = invoice?.regularDiscountAmount > 0
     ? `<tr><td colspan="3">Discount (${invoice?.regularDiscountRate || invoice?.regularDiscountAppliedPercent || ""}%)</td><td style="text-align:right;color:#059669;font-weight:700">-${invoice.regularDiscountAmount}</td></tr>`
@@ -452,10 +454,12 @@ function buildCustomerReceiptCard(invoice, storeInfo = {}, options = {}, copyTit
         ${phone ? `<div>Phone: ${phone}</div>` : ""}
         ${emailHtml}
         ${gstinHtml}
+        ${fssaiHtml}
         ${mapHtml}
       </div>
       <hr class="divider"/>
       ${showTokenNumber ? `<div class="meta"><b>Bill No: ${tokenDisplay}</b>${channelLabel ? ` &nbsp;|&nbsp; <b>${channelLabel}</b>` : ""}</div>` : ""}
+      ${invoice?.tableName ? `<div class="meta"><b>Table: ${invoice.tableName}</b>${invoice.areaName ? ` (${invoice.areaName})` : ""}${invoice.pax ? ` | Guests: ${invoice.pax} PAX` : ""}</div>` : ""}
       <div class="meta">Created On: ${createdOn}</div>
       ${showBillType ? `<div class="meta">Bill To: ${saleLabel}</div>` : ""}
       ${billToCustomer}
@@ -469,6 +473,7 @@ function buildCustomerReceiptCard(invoice, storeInfo = {}, options = {}, copyTit
       <hr class="divider"/>
       <table class="totals-table">
         <tr><td colspan="3">Subtotal</td><td style="text-align:right">Rs. ${invoice?.subtotal || invoice?.grandTotal || 0}</td></tr>
+        ${invoice?.serviceChargeAmount > 0 ? `<tr><td colspan="3">Service Tax (${invoice.serviceChargeRate || 0}%)</td><td style="text-align:right">Rs. ${invoice.serviceChargeAmount}</td></tr>` : ""}
         ${discountRow}
         ${freebieRow}
         <tr class="grand-total"><td colspan="3">Grand Total</td><td style="text-align:right">Rs. ${invoice?.grandTotal || 0}</td></tr>
@@ -544,22 +549,22 @@ function buildCookerReceiptCard(invoice, storeInfo = {}, options = {}) {
     bType === "salon"
       ? "*** SERVICE SLIP / JOB CARD ***"
       : bType === "retail" || bType === "general"
-      ? "*** STORE / COUNTER SLIP ***"
-      : "*** COOKER / KITCHEN KOT ***";
+        ? "*** STORE / COUNTER SLIP ***"
+        : "*** COOKER / KITCHEN KOT ***";
 
   const itemHeader =
     bType === "salon"
       ? "SERVICE / PRODUCT"
       : bType === "retail" || bType === "general"
-      ? "ITEM / PRODUCT"
-      : "ORDERED ITEM";
+        ? "ITEM / PRODUCT"
+        : "ORDERED ITEM";
 
   const footerNote =
     bType === "salon"
       ? "[ Staff / Stylist Copy - Service Record ]"
       : bType === "retail" || bType === "general"
-      ? "[ Store Counter Duplicate Copy ]"
-      : "[ Kitchen Copy - Prepare Order ]";
+        ? "[ Store Counter Duplicate Copy ]"
+        : "[ Kitchen Copy - Prepare Order ]";
 
   return `
     <div class="receipt cooker-receipt" style="border: 2px solid #000;">
@@ -574,6 +579,7 @@ function buildCookerReceiptCard(invoice, storeInfo = {}, options = {}) {
       </div>
       <hr class="divider"/>
       <div class="meta" style="font-size:12px;"><b>Bill No:</b> #${tokenDisplay}</div>
+      ${invoice?.tableName ? `<div class="meta" style="font-size:13px;font-weight:900;color:#0F172A;"><b>TABLE: ${invoice.tableName}</b>${invoice.areaName ? ` (${invoice.areaName})` : ""}${invoice.pax ? ` | Guests: ${invoice.pax} PAX` : ""}</div>` : ""}
       <div class="meta" style="font-size:12px;"><b>Time:</b> ${createdOn}</div>
       ${invoice?.partyName && invoice.partyName !== "Walk-in Customer" ? `<div class="meta" style="font-size:12px;"><b>Customer:</b> ${invoice.partyName}</div>` : ""}
       <hr class="divider"/>
@@ -659,7 +665,7 @@ export async function shareBillAsPdf(invoice, storeInfo = {}, options = {}, mode
       const url = URL.createObjectURL(blob);
       const win = window.open(url, "_blank");
       if (win) {
-        setTimeout(() => { try { win.print(); } catch(e){} }, 800);
+        setTimeout(() => { try { win.print(); } catch (e) { } }, 800);
       } else {
         const a = document.createElement("a");
         a.href = url;
@@ -695,7 +701,7 @@ export async function printBill(invoice, storeInfo = {}, options = {}, mode = "a
       const blob = new Blob([html], { type: "text/html" });
       const url = URL.createObjectURL(blob);
       const win = window.open(url, "_blank");
-      if (win) setTimeout(() => { try { win.print(); } catch(e){} }, 800);
+      if (win) setTimeout(() => { try { win.print(); } catch (e) { } }, 800);
       return { success: true };
     }
     const Print = await import("expo-print");

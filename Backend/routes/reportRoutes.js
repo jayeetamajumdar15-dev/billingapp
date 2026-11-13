@@ -9,9 +9,77 @@ import {
   generateInventoryReportPdf,
   generatePartyReportPdf,
 } from "../services/reportPdfService.js";
+import {
+  REPORTS_CATALOG,
+  REPORT_CATEGORIES,
+  executeReport,
+  generateUniversalReportCsv,
+  generateUniversalReportPdf,
+} from "../services/reportsEngine.js";
 
 const router = express.Router();
 router.use(protect);
+
+// ─── 50+ REPORTS ENGINE ENDPOINTS ──────────────────────────────────────────
+
+// 1. Get Catalog of 50+ Reports & Categories
+router.get("/catalog", (req, res) => {
+  return res.status(200).json({
+    success: true,
+    totalReports: REPORTS_CATALOG.length,
+    categories: REPORT_CATEGORIES,
+    reports: REPORTS_CATALOG,
+  });
+});
+
+// 2. Run any specific report by ID
+router.get("/run/:reportId", async (req, res) => {
+  try {
+    const { reportId } = req.params;
+    const reportResult = await executeReport(reportId, req.user._id, req.query);
+    return res.status(200).json({
+      success: true,
+      ...reportResult,
+    });
+  } catch (err) {
+    console.error("Execute report error:", err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 3. Export any specific report as PDF or CSV
+router.get("/export/:reportId", async (req, res) => {
+  try {
+    const { reportId } = req.params;
+    const format = (req.query.format || "pdf").toLowerCase();
+    const reportResult = await executeReport(reportId, req.user._id, req.query);
+    const meta = reportResult.meta;
+
+    const safeTitle = (meta.title || "Report").replace(/[^a-zA-Z0-9_-]/g, "_");
+
+    if (format === "csv") {
+      const csvData = generateUniversalReportCsv(meta, reportResult);
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}.csv"`);
+      return res.status(200).send(csvData);
+    } else {
+      // PDF export
+      const storeInfo = {
+        businessName: req.user.businessName || "Bistromate",
+        phone: req.user.phone || req.user.whatsappNumber || "",
+        fssaiNumber: req.user.fssaiNumber || "",
+        gstin: req.user.gstin || "",
+      };
+      const pdfBuffer = await generateUniversalReportPdf(meta, reportResult, storeInfo);
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}.pdf"`);
+      return res.status(200).send(pdfBuffer);
+    }
+  } catch (err) {
+    console.error("Export report error:", err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
 
 function getDateRange(query) {
   let { startDate, endDate, period } = query;

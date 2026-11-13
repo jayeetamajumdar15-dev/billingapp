@@ -683,6 +683,11 @@ router.put("/profile", protect, async (req, res) => {
       invoiceStyle,
       vipVisitThreshold,
       aggregatorConfig,
+      fssaiNumber,
+      printRestaurantLogo,
+      showDynamicUpiQr,
+      billFooterMessage,
+      defaultServiceTaxRate,
     } = req.body;
 
     const currentUser = await User.findById(req.user._id).select("-password");
@@ -734,6 +739,11 @@ router.put("/profile", protect, async (req, res) => {
         ...(thermalPrinterSize && { thermalPrinterSize }),
         ...(invoiceStyle && { invoiceStyle }),
         ...(vipVisitThreshold !== undefined && { vipVisitThreshold: Number(vipVisitThreshold) || 3 }),
+        ...(fssaiNumber !== undefined && { fssaiNumber: fssaiNumber.trim() }),
+        ...(printRestaurantLogo !== undefined && { printRestaurantLogo: Boolean(printRestaurantLogo) }),
+        ...(showDynamicUpiQr !== undefined && { showDynamicUpiQr: Boolean(showDynamicUpiQr) }),
+        ...(billFooterMessage !== undefined && { billFooterMessage: billFooterMessage.trim() }),
+        ...(defaultServiceTaxRate !== undefined && { defaultServiceTaxRate: Number(defaultServiceTaxRate) || 0 }),
         ...(aggregatorConfig && {
           aggregatorConfig: {
             enabled: Boolean(aggregatorConfig.enabled),

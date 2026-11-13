@@ -23,8 +23,9 @@ import { getCachedData, setCachedData, getMemoryCachedData } from "../utils/loca
 import { queueOfflineInvoice, isNetworkErrorMessage, applyOfflineItemOpsToList, queueOfflineItemCreate } from "../utils/offlineQueue";
 import { CURRENT_APP_VERSION } from "../services/updateService";
 import { useResponsive } from "../utils/responsive";
+import DynamicUpiQrModal from "../components/DynamicUpiQrModal";
 
-export default function InvoiceScreen({ user, onBack, onInvoiceSaved, editingInvoice }) {
+export default function InvoiceScreen({ user, onBack, onInvoiceSaved, editingInvoice, initialTable }) {
   const { isWide, isDesktop, posColumns, headerTopPadding } = useResponsive();
   const businessType = user?.businessType || "restaurant";
   const slipTitle =
@@ -85,6 +86,15 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved, editingInv
   const [quickItemCategory, setQuickItemCategory] = useState("General");
   const [savingQuickItem, setSavingQuickItem] = useState(false);
 
+  // Table & Dine-in States
+  const [selectedTable, setSelectedTable] = useState(initialTable || null);
+  const [selectedArea, setSelectedArea] = useState(null);
+  const [paxCount, setPaxCount] = useState(initialTable?.pax ? String(initialTable.pax) : "2");
+  const [allTables, setAllTables] = useState([]);
+  const [allAreas, setAllAreas] = useState([]);
+  const [showTablePicker, setShowTablePicker] = useState(false);
+  const [showDynamicQrModal, setShowDynamicQrModal] = useState(false);
+
   const showPosNotice = (title, message) => {
     if (Platform.OS === "web") {
       window.alert(`${title}: ${message}`);
@@ -120,6 +130,7 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved, editingInv
   useEffect(() => {
     loadPartiesAndItems();
     loadBillFormat();
+    loadTablesAndAreas();
     AsyncStorage.getItem("pos_held_bills")
       .then((raw) => {
         if (raw) {
@@ -130,8 +141,35 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved, editingInv
       .catch(() => {});
   }, []);
 
+  const loadTablesAndAreas = async () => {
+    try {
+      const [tRes, aRes] = await Promise.all([
+        api.tables.getAll().catch(() => null),
+        api.tables.getAreas().catch(() => null),
+      ]);
+      if (tRes?.success && Array.isArray(tRes.tables)) {
+        setAllTables(tRes.tables);
+        if (initialTable?._id) {
+          const found = tRes.tables.find((t) => t._id === initialTable._id);
+          if (found) setSelectedTable(found);
+        }
+      }
+      if (aRes?.success && Array.isArray(aRes.areas)) {
+        setAllAreas(aRes.areas);
+      }
+    } catch {}
+  };
+
   useEffect(() => {
     if (editingInvoice) {
+      if (editingInvoice.tableId || editingInvoice.tableName) {
+        setSelectedTable({
+          _id: editingInvoice.tableId,
+          tableNo: editingInvoice.tableName,
+          areaId: editingInvoice.areaId,
+        });
+        if (editingInvoice.pax) setPaxCount(String(editingInvoice.pax));
+      }
       if (editingInvoice.items && Array.isArray(editingInvoice.items)) {
         setCart(
           editingInvoice.items.map((it, idx) => ({
@@ -452,15 +490,26 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved, editingInv
     }
   };
 
+  // Determine current active area and service charge rate
+  const currentArea =
+    selectedArea ||
+    (selectedTable?.areaId && typeof selectedTable.areaId === "object"
+      ? selectedTable.areaId
+      : allAreas.find((a) => a._id === (selectedTable?.areaId?._id || selectedTable?.areaId)));
+
+  const serviceChargeRate = Number(currentArea?.serviceChargeRate ?? user?.defaultServiceTaxRate ?? 0);
+  const serviceChargeAmount = Math.round((subtotal * serviceChargeRate) / 100);
+  const totalBeforeDiscount = subtotal + serviceChargeAmount;
+
   const activeCustomer = selectedParty || matchedCustomer;
 
   const appliedDiscountPercent = Number(customDiscount) || (activeCustomer?.customDiscountPercent || 0);
 
   const regularDiscountAmount = Math.round(
-    (subtotal * appliedDiscountPercent) / 100
+    (totalBeforeDiscount * appliedDiscountPercent) / 100
   );
 
-  const grandTotal = Math.max(0, subtotal - regularDiscountAmount);
+  const grandTotal = Math.max(0, totalBeforeDiscount - regularDiscountAmount);
 
   const handlePaymentModeChange = (mode) => {
     setPaymentMode(mode);
@@ -555,6 +604,18 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved, editingInv
         billFormatOptions?.showGoogleMapLocation !== undefined
           ? Boolean(billFormatOptions.showGoogleMapLocation)
           : user?.showGoogleMapOnBill !== false,
+      areaId: currentArea?._id || undefined,
+      areaName: currentArea?.name || (selectedTable ? "Dine-in" : undefined),
+      tableId: selectedTable?._id || undefined,
+      tableName: selectedTable?.tableNo || undefined,
+      pax: Number(paxCount) || 1,
+      serviceChargeRate,
+      serviceChargeAmount,
+      tableStatus: selectedTable ? (paymentMode === "CREDIT" ? "OCCUPIED" : "AVAILABLE") : undefined,
+      printRestaurantLogo: user?.printRestaurantLogo !== false,
+      showDynamicUpiQr: user?.showDynamicUpiQr !== false,
+      billFooterMessage: user?.billFooterMessage || "Thank you for dining with us! Visit again.",
+      fssaiNumber: user?.fssaiNumber || "",
       items: cart.map((c) => ({
         itemId: c._id,
         name: c.name,
@@ -577,6 +638,7 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved, editingInv
     ) {
       finalRes = await queueOfflineInvoice(payload, {
         subtotal,
+        serviceChargeAmount,
         discountTotal: regularDiscountAmount,
         regularDiscountAmount,
         grandTotal,
@@ -621,12 +683,14 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved, editingInv
       if (activePrintTarget && activePrintTarget !== "none") {
         try {
           const storeData = {
-            businessName: user?.businessName || "My Store",
+            businessName: user?.businessName || "Bistromate",
             businessType: user?.businessType || "restaurant",
             phone: user?.phone || "",
             address: user?.address || "",
             email: user?.email || "",
             gstin: user?.gstin || "",
+            fssaiNumber: user?.fssaiNumber || "",
+            upiId: user?.upiId || "",
             logo: user?.logo || "",
             googleMapLocation: user?.googleMapLocation || "",
           };
@@ -837,6 +901,67 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved, editingInv
             </>
           )}
         </View>
+      </View>
+
+      {/* 🍽️ RESTAURANT TABLE & DINE-IN BAR (Petpooja style) */}
+      <View
+        style={{ backgroundColor: "#EFF6FF", borderColor: "#BFDBFE", borderBottomWidth: 1 }}
+        className="px-3 py-2 flex-row items-center justify-between"
+      >
+        <TouchableOpacity
+          onPress={() => setShowTablePicker(true)}
+          className="flex-row items-center flex-1 mr-2"
+          activeOpacity={0.75}
+        >
+          <View
+            style={{ backgroundColor: selectedTable ? "#2563EB" : "#64748B" }}
+            className="w-7 h-7 rounded-lg items-center justify-center mr-2"
+          >
+            <Ionicons name={selectedTable ? "restaurant" : "fast-food"} size={14} color="#FFFFFF" />
+          </View>
+          <View className="flex-1">
+            <View className="flex-row items-center">
+              <Text className="text-xs font-black text-gray-900" numberOfLines={1}>
+                {selectedTable ? `Table ${selectedTable.tableNo}` : "Takeaway / Counter Billing"}
+              </Text>
+              {selectedTable ? (
+                <View
+                  style={{
+                    backgroundColor: currentArea?.color ? `${currentArea.color}22` : "#DBEAFE",
+                    borderColor: currentArea?.color || "#93C5FD",
+                  }}
+                  className="px-1.5 py-0.5 rounded ml-1.5 border"
+                >
+                  <Text style={{ color: currentArea?.color || "#1E40AF" }} className="text-[10px] font-extrabold">
+                    {currentArea?.name || "Dine-in"}
+                  </Text>
+                </View>
+              ) : null}
+              {serviceChargeRate > 0 ? (
+                <Text className="text-[10px] font-bold text-amber-700 ml-1.5">
+                  ({serviceChargeRate}% Service Tax)
+                </Text>
+              ) : null}
+            </View>
+            <Text className="text-[10px] text-gray-500 font-medium">
+              {selectedTable
+                ? `Capacity: ${selectedTable.capacity || 4} • Guests: ${paxCount} PAX • Tap to switch`
+                : "Counter / Dine-in area not set • Tap to assign Table"}
+            </Text>
+          </View>
+          <Ionicons name="swap-horizontal" size={16} color="#2563EB" />
+        </TouchableOpacity>
+
+        {/* Dynamic UPI QR Instant Modal */}
+        <TouchableOpacity
+          onPress={() => setShowDynamicQrModal(true)}
+          style={{ backgroundColor: "#059669" }}
+          className="px-2.5 py-1.5 rounded-lg flex-row items-center shadow-sm"
+          activeOpacity={0.85}
+        >
+          <Ionicons name="qr-code" size={13} color="#FFFFFF" />
+          <Text className="text-white text-xs font-black ml-1">Dynamic QR</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={{ flex: 1, flexDirection: isWide ? "row" : "column" }}>
@@ -1595,6 +1720,17 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved, editingInv
                 <Text className="text-xs font-bold text-gray-800">Rs. {subtotal}</Text>
               </View>
 
+              {serviceChargeAmount > 0 ? (
+                <View className="flex-row justify-between mb-2">
+                  <Text className="text-xs text-amber-800 font-bold">
+                    Service Tax ({serviceChargeRate}% • {currentArea?.name || "Dine-in"})
+                  </Text>
+                  <Text className="text-xs font-bold text-amber-800">
+                    +Rs. {serviceChargeAmount}
+                  </Text>
+                </View>
+              ) : null}
+
               {regularDiscountAmount > 0 ? (
                 <View className="flex-row justify-between mb-2">
                   <Text className="text-xs text-emerald-700 font-bold">
@@ -2282,6 +2418,143 @@ export default function InvoiceScreen({ user, onBack, onInvoiceSaved, editingInv
           </View>
         </View>
       </Modal>
+
+      {/* ────────────────── TABLE & DINE-IN PICKER MODAL ────────────────── */}
+      <Modal
+        visible={showTablePicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowTablePicker(false)}
+      >
+        <View className="flex-1 bg-black/50 justify-center items-center px-4">
+          <View style={{ width: "100%", maxWidth: 500, maxHeight: "85%" }} className="bg-white rounded-2xl p-5 shadow-2xl">
+            <View className="flex-row items-center justify-between pb-3 border-b border-gray-200">
+              <View className="flex-row items-center">
+                <Ionicons name="restaurant" size={20} color="#2563EB" />
+                <Text className="text-base font-black text-gray-900 ml-2">Select Table & Dine-in Area</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowTablePicker(false)} className="p-1">
+                <Ionicons name="close" size={22} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            {/* PAX / Guest Count Selector */}
+            <View className="py-3 border-b border-gray-100">
+              <Text className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Guest Count (PAX)</Text>
+              <View className="flex-row items-center gap-2">
+                {["1", "2", "4", "6", "8", "12"].map((p) => (
+                  <TouchableOpacity
+                    key={p}
+                    onPress={() => setPaxCount(p)}
+                    style={{
+                      backgroundColor: paxCount === p ? "#2563EB" : "#F1F5F9",
+                      borderColor: paxCount === p ? "#2563EB" : "#E2E8F0",
+                    }}
+                    className="flex-1 py-1.5 rounded-lg border items-center justify-center"
+                  >
+                    <Text className={`text-xs font-black ${paxCount === p ? "text-white" : "text-gray-800"}`}>
+                      {p}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Takeaway / Counter Billing Option */}
+            <TouchableOpacity
+              onPress={() => {
+                setSelectedTable(null);
+                setSelectedArea(null);
+                setShowTablePicker(false);
+              }}
+              style={{
+                backgroundColor: !selectedTable ? "#EFF6FF" : "#F8FAFC",
+                borderColor: !selectedTable ? "#2563EB" : "#E2E8F0",
+              }}
+              className="mt-3 p-3 rounded-xl border flex-row items-center justify-between"
+            >
+              <View className="flex-row items-center">
+                <View className="w-8 h-8 rounded-lg bg-gray-200 items-center justify-center mr-2.5">
+                  <Ionicons name="fast-food" size={16} color="#374151" />
+                </View>
+                <View>
+                  <Text className="text-xs font-black text-gray-900">Takeaway / Counter Billing</Text>
+                  <Text className="text-[10px] text-gray-500">Standard counter order without table assignment</Text>
+                </View>
+              </View>
+              {!selectedTable ? <Ionicons name="checkmark-circle" size={18} color="#2563EB" /> : null}
+            </TouchableOpacity>
+
+            {/* Tables Grid */}
+            <Text className="text-xs font-bold text-gray-600 uppercase tracking-wider mt-4 mb-2">
+              Dine-in Tables ({allTables.length})
+            </Text>
+
+            <ScrollView showsVerticalScrollIndicator={false} className="flex-1 mt-1">
+              {allTables.length === 0 ? (
+                <View className="py-6 items-center">
+                  <Text className="text-xs text-gray-400">Loading tables...</Text>
+                </View>
+              ) : (
+                <View className="flex-row flex-wrap gap-2">
+                  {allTables.map((t) => {
+                    const isSelected = selectedTable?._id === t._id;
+                    const area = typeof t.areaId === "object" ? t.areaId : allAreas.find((a) => a._id === t.areaId);
+                    const isOccupied = t.status === "OCCUPIED";
+                    const isBilled = t.status === "BILLED";
+                    const isReserved = t.status === "RESERVED";
+                    const statusColor = isOccupied ? "#DC2626" : isBilled ? "#2563EB" : isReserved ? "#9333EA" : "#16A34A";
+
+                    return (
+                      <TouchableOpacity
+                        key={t._id}
+                        onPress={() => {
+                          setSelectedTable(t);
+                          setSelectedArea(area || null);
+                          setShowTablePicker(false);
+                        }}
+                        style={{
+                          width: "31%",
+                          backgroundColor: isSelected ? "#EFF6FF" : "#FFFFFF",
+                          borderColor: isSelected ? "#2563EB" : "#E2E8F0",
+                          borderWidth: isSelected ? 2 : 1,
+                        }}
+                        className="p-2.5 rounded-xl mb-2 items-center justify-center shadow-xs"
+                      >
+                        <View className="flex-row items-center justify-between w-full mb-1">
+                          <Text className="text-xs font-black text-gray-900">{t.tableNo}</Text>
+                          <View style={{ backgroundColor: statusColor }} className="w-2 h-2 rounded-full" />
+                        </View>
+                        <Text className="text-[10px] text-gray-500" numberOfLines={1}>
+                          {area?.name || "Dine-in"}
+                        </Text>
+                        <Text className="text-[9px] font-bold text-gray-400 mt-0.5">
+                          {t.capacity} seats • {t.status}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ────────────────── DYNAMIC UPI QR POPUP MODAL ────────────────── */}
+      <DynamicUpiQrModal
+        visible={showDynamicQrModal}
+        onClose={() => setShowDynamicQrModal(false)}
+        upiId={user?.upiId || ""}
+        storeName={user?.businessName || "Bistromate"}
+        amount={grandTotal}
+        invoiceNumber={editingInvoice?.invoiceNumber || "POS"}
+        tableName={selectedTable ? selectedTable.tableNo : ""}
+        onMarkPaid={() => {
+          setShowDynamicQrModal(false);
+          setPaymentMode("UPI");
+        }}
+      />
     </View>
   );
 }

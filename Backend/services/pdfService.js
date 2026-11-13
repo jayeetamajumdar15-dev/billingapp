@@ -1,13 +1,16 @@
 import PDFDocument from "pdfkit";
+import QRCode from "qrcode";
 
 /**
  * Generate a clean, authentic, commercial-grade POS & Restaurant receipt PDF.
- * Layout modeled after crisp thermal POS receipts (no barcode):
- * - Centered Store Logo (if configured)
- * - Centered Bold Store Name, Address, Phone, Email (@), GSTIN
- * - Clean Left-Aligned Bill Metadata (Bill No, Created On, Bill To / Payment, Customer)
+ * Layout modeled after Petpooja & crisp thermal POS receipts:
+ * - Centered Store Logo (toggleable in Settings)
+ * - Centered Bold Store Name, Address, Phone, Email, GSTIN & FSSAI
+ * - Clean Left-Aligned Bill Metadata (Bill No, Table, Area, PAX, Created On, Customer)
  * - Crisp 4-column Item Table (Item Name, Qty, Rate, Total) with clean wrapping
- * - Clean Subtotal, Discount, Freebie, Tax, Bold Grand Total, Savings & Footer
+ * - Bill Break-ups: Subtotal, Area Service Charge / Tax, GST, Discounts, Rounding, Grand Total
+ * - Dynamic UPI Payment QR Code right on the bill (scan to pay exact amount)
+ * - Customizable Footer Message & Google Maps Link
  *
  * @param {Object} invoice
  * @param {Object} storeInfo
@@ -18,11 +21,12 @@ export function generateInvoicePdfBuffer(invoice, storeInfo = {}) {
     try {
       const items = invoice.items || [];
 
-      const storeName = (storeInfo.businessName || invoice.businessName || "My Store").trim();
+      const storeName = (storeInfo.businessName || invoice.businessName || "My Restaurant").trim();
       const storePhone = (storeInfo.phone || storeInfo.whatsappNumber || "").toString().trim();
       const storeAddress = (storeInfo.address || "").toString().trim();
       const storeEmail = (storeInfo.email || "").toString().trim();
       const storeGstin = (storeInfo.gstin || "").toString().trim();
+      const storeFssai = (storeInfo.fssaiNumber || invoice.fssaiNumber || "").toString().trim();
       const storeLogo = (storeInfo.logo || "").toString().trim();
       const storeMapLocation = (storeInfo.googleMapLocation || invoice.googleMapLocation || "").toString().trim();
       const showMapLocation =
@@ -30,42 +34,78 @@ export function generateInvoicePdfBuffer(invoice, storeInfo = {}) {
         invoice.showGoogleMapOnBill !== false &&
         Boolean(storeMapLocation);
 
+      const printLogoEnabled =
+        storeInfo.printRestaurantLogo !== false &&
+        invoice.printRestaurantLogo !== false;
+
+      const upiId = (storeInfo.upiId || invoice.upiId || "").toString().trim();
+      const showDynamicUpiQr =
+        storeInfo.showDynamicUpiQr !== false &&
+        invoice.showDynamicUpiQr !== false &&
+        Boolean(upiId);
+
       const pageWidth = 240; // ~80mm crisp POS receipt width
       const leftX = 14;
       const contentWidth = pageWidth - leftX * 2; // 212pt
       const rightX = leftX + contentWidth;
 
-      // Load logo buffer if available
+      // Load logo buffer if available and enabled
       let logoBuf = null;
-      try {
-        if (storeLogo) {
-          if (storeLogo.startsWith("data:image")) {
+      if (printLogoEnabled) {
+        try {
+          if (storeLogo && storeLogo.startsWith("data:image")) {
             const base64Data = storeLogo.split(",")[1];
             if (base64Data) logoBuf = Buffer.from(base64Data, "base64");
-          } else if (storeLogo.startsWith("http://") || storeLogo.startsWith("https://")) {
+          } else if (storeLogo && (storeLogo.startsWith("http://") || storeLogo.startsWith("https://"))) {
             const logoRes = await fetch(storeLogo);
             if (logoRes.ok) {
               logoBuf = Buffer.from(await logoRes.arrayBuffer());
             }
-          } else {
+          } else if (storeLogo) {
             const fs = await import("fs");
             if (fs.existsSync(storeLogo)) {
               logoBuf = fs.readFileSync(storeLogo);
             }
           }
+          if (!logoBuf) {
+            const path = await import("path");
+            const fs = await import("fs");
+            const defaultLogoPath = path.resolve(process.cwd(), "assets", "bistromate_logo.png");
+            if (fs.existsSync(defaultLogoPath)) {
+              logoBuf = fs.readFileSync(defaultLogoPath);
+            }
+          }
+        } catch (logoErr) {
+          console.warn("Logo embed notice:", logoErr.message);
         }
-      } catch (logoErr) {
-        console.warn("Logo embed notice:", logoErr.message);
       }
 
-      // Estimate dynamic page height cleanly so there is never clipping or excessive white space
-      let estimatedHeight = 225;
+      // Generate Dynamic UPI QR Code buffer
+      let upiQrBuf = null;
+      if (showDynamicUpiQr) {
+        try {
+          const grandVal = Number(invoice.grandTotal || 0);
+          const upiUrl = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(storeName)}&am=${grandVal.toFixed(2)}&cu=INR&tn=Bill%20${encodeURIComponent(invoice.invoiceNumber || "1")}`;
+          upiQrBuf = await QRCode.toBuffer(upiUrl, {
+            width: 140,
+            margin: 1,
+            color: { dark: "#0F172A", light: "#FFFFFF" },
+          });
+        } catch (qrErr) {
+          console.warn("UPI QR generation notice:", qrErr.message);
+        }
+      }
+
+      // Estimate dynamic page height cleanly
+      let estimatedHeight = 250;
       if (logoBuf) estimatedHeight += 64;
       if (storeAddress) estimatedHeight += Math.ceil(storeAddress.length / 30) * 11 + 4;
       if (storePhone) estimatedHeight += 12;
       if (storeEmail) estimatedHeight += 12;
       if (storeGstin) estimatedHeight += 12;
+      if (storeFssai) estimatedHeight += 12;
       if (showMapLocation) estimatedHeight += 24;
+      if (invoice.tableName) estimatedHeight += 14;
 
       for (const it of items) {
         const nm = (it.name || "Item").toString();
@@ -73,17 +113,19 @@ export function generateInvoicePdfBuffer(invoice, storeInfo = {}) {
         estimatedHeight += lines * 11 + 6;
       }
 
+      if (invoice.serviceChargeAmount > 0) estimatedHeight += 13;
       if (invoice.discountTotal > 0) estimatedHeight += 13;
       if (invoice.regularDiscountAmount > 0) estimatedHeight += 13;
       if (invoice.freebieItemGiven) estimatedHeight += 13;
       if (invoice.taxTotal > 0) estimatedHeight += 13;
       if (invoice.paymentMode === "UPI/CASH") estimatedHeight += 14;
+      if (upiQrBuf) estimatedHeight += 145; // Dynamic UPI QR block
       const totalSaved = (invoice.discountTotal || 0) + (invoice.regularDiscountAmount || 0);
       if (totalSaved > 0) estimatedHeight += 18;
       if (invoice.notes) estimatedHeight += 16;
 
       const doc = new PDFDocument({
-        size: [pageWidth, Math.max(300, Math.ceil(estimatedHeight + 30))],
+        size: [pageWidth, Math.max(340, Math.ceil(estimatedHeight + 40))],
         autoFirstPage: true,
         bufferPages: true,
         margins: { top: 14, bottom: 12, left: leftX, right: leftX },
@@ -116,7 +158,7 @@ export function generateInvoicePdfBuffer(invoice, storeInfo = {}) {
 
       doc.y = 14;
 
-      // ─── 1. CENTERED STORE LOGO ─────────────────────────────────────────────
+      // ─── 1. CENTERED RESTAURANT LOGO (Customizable) ─────────────────────────
       if (logoBuf) {
         try {
           const logoSize = 54;
@@ -132,7 +174,7 @@ export function generateInvoicePdfBuffer(invoice, storeInfo = {}) {
         }
       }
 
-      // ─── 2. CLEAN STORE HEADER ──────────────────────────────────────────────
+      // ─── 2. RESTAURANT HEADER (Customizable Details) ─────────────────────────
       doc
         .fontSize(12.5)
         .font("Helvetica-Bold")
@@ -189,6 +231,17 @@ export function generateInvoicePdfBuffer(invoice, storeInfo = {}) {
           });
       }
 
+      if (storeFssai) {
+        doc
+          .fontSize(8)
+          .font("Helvetica")
+          .fillColor("#1E293B")
+          .text(`FSSAI Lic. No: ${storeFssai}`, leftX, doc.y + 1, {
+            width: contentWidth,
+            align: "center",
+          });
+      }
+
       if (showMapLocation) {
         const cleanMapUrl = storeMapLocation.startsWith("http")
           ? storeMapLocation
@@ -209,7 +262,7 @@ export function generateInvoicePdfBuffer(invoice, storeInfo = {}) {
       drawDashedLine(doc.y);
       doc.y += 7;
 
-      // ─── 3. BILL METADATA BLOCK (Clean Left-Aligned Receipt Style) ──────────
+      // ─── 3. BILL & TABLE METADATA BLOCK ─────────────────────────────────────
       const rawDate = invoice.invoiceDate || invoice.createdAt || new Date();
       const formattedDate = new Intl.DateTimeFormat("en-GB", {
         timeZone: "Asia/Kolkata",
@@ -240,6 +293,15 @@ export function generateInvoicePdfBuffer(invoice, storeInfo = {}) {
 
       doc.fontSize(8.5).font("Helvetica-Bold").fillColor("#0F172A");
       doc.text(`Bill No: ${billNo}`, leftX, doc.y, { width: contentWidth });
+
+      // Table & Dine-in Area info (Petpooja style)
+      if (invoice.tableName) {
+        const areaTag = invoice.areaName ? ` (${invoice.areaName})` : "";
+        const paxTag = invoice.pax ? ` • ${invoice.pax} Guests` : "";
+        doc.font("Helvetica-Bold").fillColor("#2563EB");
+        doc.text(`Table: ${invoice.tableName}${areaTag}${paxTag}`, leftX, doc.y + 1.5, { width: contentWidth });
+      }
+
       doc.font("Helvetica").fillColor("#1E293B");
       doc.text(`Created On: ${formattedDate}`, leftX, doc.y + 1.5, { width: contentWidth });
       doc.text(`Bill To: ${saleLabel}`, leftX, doc.y + 1.5, { width: contentWidth });
@@ -312,7 +374,7 @@ export function generateInvoicePdfBuffer(invoice, storeInfo = {}) {
       drawDashedLine(doc.y);
       doc.y += 6;
 
-      // ─── 5. TOTALS SECTION ──────────────────────────────────────────────────
+      // ─── 5. BILL BREAK-UPS & TOTALS SECTION ─────────────────────────────────
       const printRow = (label, value, isBold = false, color = "#1E293B", fontSize = 8.4) => {
         const y = doc.y;
         doc.fontSize(fontSize).font(isBold ? "Helvetica-Bold" : "Helvetica").fillColor(color);
@@ -324,13 +386,18 @@ export function generateInvoicePdfBuffer(invoice, storeInfo = {}) {
       const subtotalVal = Number(invoice.subtotal || invoice.grandTotal || 0);
       printRow("Subtotal", `Rs. ${subtotalVal.toFixed(2)}`);
 
+      if (invoice.serviceChargeAmount > 0) {
+        const scRate = invoice.serviceChargeRate ? ` (${invoice.serviceChargeRate}%)` : "";
+        printRow(`Service Charge${scRate}`, `Rs. ${Number(invoice.serviceChargeAmount).toFixed(2)}`, false, "#2563EB");
+      }
+
       if (invoice.discountTotal > 0) {
         printRow("Discount", `-Rs. ${Number(invoice.discountTotal).toFixed(2)}`, false, "#059669");
       }
 
       if (invoice.regularDiscountAmount > 0) {
         const discRate = invoice.regularDiscountAppliedPercent || invoice.regularDiscountRate;
-        const discLabel = discRate ? `Discount (${discRate}%)` : "VIP Discount";
+        const discLabel = discRate ? `VIP Discount (${discRate}%)` : "VIP Discount";
         printRow(discLabel, `-Rs. ${Number(invoice.regularDiscountAmount).toFixed(2)}`, true, "#059669");
       }
 
@@ -340,6 +407,10 @@ export function generateInvoicePdfBuffer(invoice, storeInfo = {}) {
 
       if (invoice.taxTotal > 0) {
         printRow("GST / Tax", `Rs. ${Number(invoice.taxTotal).toFixed(2)}`);
+      }
+
+      if (invoice.roundOff && Math.abs(invoice.roundOff) > 0) {
+        printRow("Round Off", `Rs. ${invoice.roundOff > 0 ? "+" : ""}${Number(invoice.roundOff).toFixed(2)}`);
       }
 
       doc.y += 2;
@@ -353,12 +424,12 @@ export function generateInvoicePdfBuffer(invoice, storeInfo = {}) {
       doc.y += 5;
 
       const payStatus = (invoice.paymentStatus || "PAID").toUpperCase();
-      printRow("Payment", `${paymentMode} (${payStatus})`, true, paymentMode === "CREDIT" ? "#DC2626" : "#0F172A", 8);
+      printRow("Payment Mode", `${paymentMode} (${payStatus})`, true, paymentMode === "CREDIT" ? "#DC2626" : "#0F172A", 8);
 
       if (paymentMode === "UPI/CASH") {
         printRow(
-          "Split Paid",
-          `Cash Rs.${invoice.cashAmount || 0} + UPI Rs.${invoice.upiAmount || 0}`,
+          "Split Breakdown",
+          `Cash: Rs.${invoice.cashAmount || 0} | UPI: Rs.${invoice.upiAmount || 0}`,
           false,
           "#334155",
           7.8
@@ -371,25 +442,95 @@ export function generateInvoicePdfBuffer(invoice, storeInfo = {}) {
           .fontSize(8)
           .font("Helvetica-Bold")
           .fillColor("#059669")
-          .text(`You Saved Rs. ${totalSaved.toFixed(0)} on this bill!`, leftX, doc.y, {
+          .text(`🎉 You Saved Rs. ${totalSaved.toFixed(0)} on this bill!`, leftX, doc.y, {
             width: contentWidth,
             align: "center",
           });
       }
 
-      // ─── 6. CLEAN FOOTER (NO BARCODE) ───────────────────────────────────────
+      // ─── 6. DYNAMIC UPI PAYMENT QR CODE (Petpooja Style) ─────────────────────
+      if (upiQrBuf) {
+        doc.y += 6;
+        drawDashedLine(doc.y);
+        doc.y += 6;
+
+        doc
+          .fontSize(8.5)
+          .font("Helvetica-Bold")
+          .fillColor("#0F172A")
+          .text("SCAN TO PAY VIA ANY UPI APP", leftX, doc.y, {
+            width: contentWidth,
+            align: "center",
+          });
+
+        doc.y += 3;
+        const qrSize = 96;
+        const qrX = leftX + (contentWidth - qrSize) / 2;
+        doc.image(upiQrBuf, qrX, doc.y, { width: qrSize, height: qrSize });
+        doc.y += qrSize + 4;
+
+        doc
+          .fontSize(7.5)
+          .font("Helvetica-Bold")
+          .fillColor("#2563EB")
+          .text(`Amount: Rs. ${grandVal.toFixed(2)}`, leftX, doc.y, {
+            width: contentWidth,
+            align: "center",
+          });
+
+        doc
+          .fontSize(7)
+          .font("Helvetica")
+          .fillColor("#64748B")
+          .text(`UPI ID: ${upiId}`, leftX, doc.y + 1, {
+            width: contentWidth,
+            align: "center",
+          });
+      }
+
+      // ─── 7. CUSTOMIZABLE FOOTER MESSAGE ─────────────────────────────────────
       doc.y += 6;
       drawDashedLine(doc.y);
       doc.y += 7;
+
+      const footerMsg = (
+        storeInfo.billFooterMessage ||
+        invoice.billFooterMessage ||
+        "Thank you! Visit again."
+      ).trim();
 
       doc
         .fontSize(8.5)
         .font("Helvetica-Bold")
         .fillColor("#0F172A")
-        .text("Thank you! Visit again.", leftX, doc.y, {
+        .text(footerMsg, leftX, doc.y, {
           width: contentWidth,
           align: "center",
         });
+
+      if (showMapLocation) {
+        const cleanMapUrl = storeMapLocation.startsWith("http")
+          ? storeMapLocation
+          : `https://${storeMapLocation}`;
+        doc.y += 4;
+        doc
+          .fontSize(7.5)
+          .font("Helvetica-Bold")
+          .fillColor("#2563EB")
+          .text("📍 Locate Us on Google Maps", leftX, doc.y, {
+            width: contentWidth,
+            align: "center",
+            link: cleanMapUrl,
+            underline: true,
+          });
+      }
+
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
 
       if (showMapLocation) {
         const cleanMapUrl = storeMapLocation.startsWith("http")

@@ -483,6 +483,10 @@ export const api = {
     getPairingCode: (phone) => request("/whatsapp/pairing-code", { method: "POST", body: JSON.stringify({ phone }) }),
   },
   reports: {
+    getCatalog: () => request("/reports/catalog"),
+    runReport: (reportId, params = "") => request(`/reports/run/${reportId}${params ? `?${params}` : ""}`),
+    getExportUrl: (reportId, format = "pdf", params = "") =>
+      `${currentBaseUrl}/reports/export/${reportId}?format=${format}${params ? `&${params}` : ""}`,
     getSales: (params = "") => request(`/reports/sales${params ? `?${params}` : ""}`),
     getSalesPdfUrl: (params = "") => `${currentBaseUrl}/reports/sales/pdf${params ? `?${params}` : ""}`,
     getSalesCsvUrl: (params = "") => `${currentBaseUrl}/reports/sales/csv${params ? `?${params}` : ""}`,
@@ -492,5 +496,45 @@ export const api = {
     getPartiesCsvUrl: () => `${currentBaseUrl}/reports/parties/csv`,
     getTopItems: (days = 365) => request(`/reports/top-items?days=${days}`),
     getCategorySales: (days = 365) => request(`/reports/category-sales?days=${days}`),
+  },
+  tables: {
+    getAll: (params = "") => request(`/tables${params ? `?${params}` : ""}`),
+    create: (payload) =>
+      request("/tables", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    update: (id, payload) =>
+      request(`/tables/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      }),
+    delete: (id) => request(`/tables/${id}`, { method: "DELETE" }),
+    transfer: (sourceTableId, targetTableId) =>
+      request("/tables/transfer", {
+        method: "POST",
+        body: JSON.stringify({ sourceTableId, targetTableId }),
+      }),
+    settle: (id) =>
+      request(`/tables/settle/${id}`, {
+        method: "POST",
+      }),
+    reserve: (id, payload) =>
+      request(`/tables/reserve/${id}`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    getAreas: () => request("/tables/areas"),
+    createArea: (payload) =>
+      request("/tables/areas", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    updateArea: (id, payload) =>
+      request(`/tables/areas/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      }),
+    deleteArea: (id) => request(`/tables/areas/${id}`, { method: "DELETE" }),
   },
 };

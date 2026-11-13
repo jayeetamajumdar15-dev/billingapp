@@ -53,6 +53,13 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
   const [address, setAddress] = useState(user?.address || "");
   const [upiId, setUpiId] = useState(user?.upiId || "");
   const [logo, setLogo] = useState(user?.logo || "");
+  const [fssaiNumber, setFssaiNumber] = useState(user?.fssaiNumber || "");
+  const [billShowDynamicQr, setBillShowDynamicQr] = useState(
+    user?.showDynamicUpiQr !== undefined ? Boolean(user.showDynamicUpiQr) : true
+  );
+  const [defaultServiceTaxRate, setDefaultServiceTaxRate] = useState(
+    user?.defaultServiceTaxRate !== undefined ? String(user.defaultServiceTaxRate) : "0"
+  );
   const [businessType, setBusinessType] = useState(user?.businessType || "restaurant");
   const [googleMapLocation, setGoogleMapLocation] = useState(user?.googleMapLocation || "");
   const [invoiceStyle, setInvoiceStyle] = useState(user?.invoiceStyle || "modern_zudio");
@@ -147,6 +154,7 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
         showGstin: billShowGstin,
         showBillType: billShowType,
         showGoogleMapLocation: billShowMapLocation,
+        showDynamicUpiQr: billShowDynamicQr,
         footerNote: billFooter,
       };
       await AsyncStorage.setItem("billFormatOptions", JSON.stringify(opts));
@@ -154,6 +162,10 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
         invoiceStyle,
         thermalPrinterSize: printerSize,
         showGoogleMapOnBill: billShowMapLocation,
+        showDynamicUpiQr: billShowDynamicQr,
+        printRestaurantLogo: billShowLogo,
+        billFooterMessage: billFooter.trim(),
+        fssaiNumber: fssaiNumber.trim(),
         ...(googleMapLocation.trim() ? { googleMapLocation: googleMapLocation.trim() } : {}),
       });
       if (updateRes?.success && updateRes?.user && onProfileUpdated) {
@@ -420,6 +432,11 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
       businessType,
       email: email.trim() || undefined,
       gstin: gstin.trim() || undefined,
+      fssaiNumber: fssaiNumber.trim() || undefined,
+      printRestaurantLogo: billShowLogo,
+      showDynamicUpiQr: billShowDynamicQr,
+      billFooterMessage: billFooter.trim(),
+      defaultServiceTaxRate: Number(defaultServiceTaxRate) || 0,
       address: address.trim() || undefined,
       googleMapLocation: googleMapLocation.trim() || "",
       showGoogleMapOnBill: billShowMapLocation,
@@ -801,6 +818,28 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
                   onChangeText={setGstin}
                   autoCapitalize="characters"
                 />
+              </View>
+              <View className="mb-3">
+                <Text className="text-xs font-bold text-gray-700 mb-1">FSSAI License Number</Text>
+                <TextInput
+                  className="bg-gray-100 border border-gray-300 rounded-xl px-4 py-2.5 text-sm"
+                  placeholder="e.g. 12823019000123"
+                  value={fssaiNumber}
+                  onChangeText={setFssaiNumber}
+                  keyboardType="numeric"
+                />
+                <Text className="text-[10px] text-gray-400 mt-1">Printed on bill header for food safety compliance</Text>
+              </View>
+              <View className="mb-3">
+                <Text className="text-xs font-bold text-gray-700 mb-1">Default Dine-in Service Tax / Charge (%)</Text>
+                <TextInput
+                  className="bg-gray-100 border border-gray-300 rounded-xl px-4 py-2.5 text-sm"
+                  placeholder="0"
+                  value={defaultServiceTaxRate}
+                  onChangeText={setDefaultServiceTaxRate}
+                  keyboardType="numeric"
+                />
+                <Text className="text-[10px] text-gray-400 mt-1">Default service tax applied when an area doesn't have custom rates</Text>
               </View>
               <View className="mb-3">
                 <Text className="text-xs font-bold text-gray-700 mb-1">UPI ID (for Bill QR Code)</Text>
@@ -1205,6 +1244,7 @@ export default function SettingsScreen({ user, onOpenDrawer, onBack, onLogout, o
                 { label: "Show Store Email in Header", state: billShowEmail, set: setBillShowEmail },
                 { label: "Show GSTIN in Header", state: billShowGstin, set: setBillShowGstin },
                 { label: "Show Bill Type (Cash Sale / Credit)", state: billShowType, set: setBillShowType },
+                { label: "Print Dynamic UPI Payment QR Code on Bill", state: billShowDynamicQr, set: setBillShowDynamicQr },
                 { label: "Show Google Maps Location on Bill & WhatsApp", state: billShowMapLocation, set: setBillShowMapLocation },
               ].map(({ label, state, set }) => (
                 <View key={label} className="flex-row items-center justify-between py-2 border-b border-gray-100">

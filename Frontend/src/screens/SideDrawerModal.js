@@ -10,6 +10,7 @@ export default function SideDrawerModal({
 }) {
   const menuItems = [
     { id: "dashboard", label: "Dashboard", icon: "home" },
+    { id: "tables", label: "Tables & Dine-In", icon: "table-restaurant" },
     { id: "reports", label: "Reports & Analytics", icon: "assessment" },
     { id: "sales", label: "Sale List", icon: "receipt" },
     { id: "party", label: "Customers & Parties", icon: "people" },

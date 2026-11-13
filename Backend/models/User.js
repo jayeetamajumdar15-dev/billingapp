@@ -61,6 +61,27 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    fssaiNumber: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    printRestaurantLogo: {
+      type: Boolean,
+      default: true,
+    },
+    showDynamicUpiQr: {
+      type: Boolean,
+      default: true,
+    },
+    billFooterMessage: {
+      type: String,
+      default: "Thank you for dining with us! Visit again.",
+    },
+    defaultServiceTaxRate: {
+      type: Number,
+      default: 0,
+    },
     thermalPrinterSize: {
       type: String,
       enum: ["2inch", "3inch", "A4", "A5"],
