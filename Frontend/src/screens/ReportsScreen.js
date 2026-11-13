@@ -20,11 +20,15 @@ import { REPORTS_CATALOG, REPORT_CATEGORIES } from "../data/reportsCatalog";
 
 export default function ReportsScreen({ isActive = true, onOpenDrawer, onBack }) {
   const { isWide, headerTopPadding } = useResponsive();
-  const [reportType, setReportType] = useState("hub");
+  
+  // Clean top navigation: "overview" or "hub"
+  const [activeTab, setActiveTab] = useState("overview");
   const [period, setPeriod] = useState("today");
   const [topDays, setTopDays] = useState(365);
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
+
+  // Cached overview data
   const [salesData, setSalesData] = useState(() => getMemoryCachedData("reports_sales_today"));
   const [inventoryItems, setInventoryItems] = useState(() => getMemoryCachedData("items_all") || []);
   const [parties, setParties] = useState(() => getMemoryCachedData("parties_all") || []);
@@ -32,13 +36,10 @@ export default function ReportsScreen({ isActive = true, onOpenDrawer, onBack })
   const [overallTopData, setOverallTopData] = useState(() => getMemoryCachedData("reports_topItems_365")?.overallTop || []);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
 
-  // 55+ Reports Hub State
+  // Reports Directory Hub State
   const [hubSearch, setHubSearch] = useState("");
-  const [hubCategory, setHubCategory] = useState("all");
   const [hubPeriod, setHubPeriod] = useState("today");
-  const [catalogReports, setCatalogReports] = useState(REPORTS_CATALOG);
-  const [catalogCategories, setCatalogCategories] = useState(REPORT_CATEGORIES);
-  const [loadingCatalog, setLoadingCatalog] = useState(false);
+  const [expandedCategory, setExpandedCategory] = useState("sales"); // default expand 1st category
 
   // Active Report Viewer Modal State
   const [activeReportModal, setActiveReportModal] = useState(null);
@@ -55,67 +56,42 @@ export default function ReportsScreen({ isActive = true, onOpenDrawer, onBack })
   const loadData = async () => {
     let hasCached = false;
     try {
-      if (reportType === "sales") {
-        const c = await getCachedData(`reports_sales_${period}`);
-        if (c) {
-          setSalesData(c);
-          hasCached = true;
-        }
-        if (!hasCached) setLoading(true);
-        const res = await api.reports.getSales(`period=${period}`);
-        if (res.success) {
-          setSalesData(res);
-          setCachedData(`reports_sales_${period}`, res);
-        }
-      } else if (reportType === "inventory") {
-        const c = await getCachedData("items_all");
-        if (Array.isArray(c) && c.length > 0) {
-          setInventoryItems(c);
-          hasCached = true;
-        }
-        if (!hasCached) setLoading(true);
-        const res = await api.items.getAll();
-        if (res.success && Array.isArray(res.items)) {
-          const sorted = [...res.items].sort((a, b) =>
-            String(a?.name || "").localeCompare(String(b?.name || ""), undefined, {
-              numeric: true,
-              sensitivity: "base",
-            })
-          );
-          setInventoryItems(sorted);
-          setCachedData("items_all", sorted);
-        }
-      } else if (reportType === "parties") {
-        const c = await getCachedData("parties_all");
-        if (Array.isArray(c) && c.length > 0) {
-          setParties(c);
-          hasCached = true;
-        }
-        if (!hasCached) setLoading(true);
-        const res = await api.parties.getAll();
-        if (res.success && res.parties) {
-          setParties(res.parties);
-          setCachedData("parties_all", res.parties);
-        }
-      } else if (reportType === "topItems") {
-        const c = await getCachedData(`reports_topItems_${topDays}`);
-        if (c) {
-          setTopItemsData(c.topItems || []);
-          setOverallTopData(c.overallTop || []);
-          hasCached = true;
-        }
-        if (!hasCached) setLoading(true);
-        const res = await api.reports.getTopItems(topDays);
-        if (res && res.success) {
-          const topList = res.data || res.topItems || [];
-          const overallList = res.overallTop || [];
-          setTopItemsData(topList);
-          setOverallTopData(overallList);
-          setCachedData(`reports_topItems_${topDays}`, { topItems: topList, overallTop: overallList });
-        }
+      const c = await getCachedData(`reports_sales_${period}`);
+      if (c) {
+        setSalesData(c);
+        hasCached = true;
       }
-    } catch (err) {
-      console.warn("Failed to load report data:", err.message);
+      if (!hasCached) setLoading(true);
+      const res = await api.reports.getSales(`period=${period}`);
+      if (res.success) {
+        setSalesData(res);
+        setCachedData(`reports_sales_${period}`, res);
+      }
+
+      // Also refresh inventory valuation and parties if needed
+      api.items.getAll().then((r) => {
+        if (r?.success && Array.isArray(r.items)) {
+          setInventoryItems(r.items);
+          setCachedData("items_all", r.items);
+        }
+      }).catch(() => {});
+
+      api.parties.getAll().then((r) => {
+        if (r?.success && r.parties) {
+          setParties(r.parties);
+          setCachedData("parties_all", r.parties);
+        }
+      }).catch(() => {});
+
+      api.reports.getTopItems(`days=${topDays}`).then((r) => {
+        if (r?.success && r.topItems) {
+          setTopItemsData(r.topItems);
+          if (r.overallTop) setOverallTopData(r.overallTop);
+          setCachedData(`reports_topItems_${topDays}`, r);
+        }
+      }).catch(() => {});
+    } catch (e) {
+      console.warn("Reports loadData notice:", e.message);
     } finally {
       setLoading(false);
     }
@@ -124,21 +100,8 @@ export default function ReportsScreen({ isActive = true, onOpenDrawer, onBack })
   useEffect(() => {
     if (isActive) {
       loadData();
-      if (catalogReports.length === 0) {
-        setLoadingCatalog(true);
-        api.reports
-          .getCatalog()
-          .then((res) => {
-            if (res?.success && Array.isArray(res.reports)) {
-              setCatalogReports(res.reports);
-              setCatalogCategories(res.categories || []);
-            }
-          })
-          .catch(() => {})
-          .finally(() => setLoadingCatalog(false));
-      }
     }
-  }, [reportType, period, topDays, isActive]);
+  }, [period, topDays, isActive]);
 
   const handleOpenReportViewer = async (report) => {
     setActiveReportModal(report);
@@ -188,22 +151,20 @@ export default function ReportsScreen({ isActive = true, onOpenDrawer, onBack })
       setLoadingCategorySales(false);
     }
   };
-  const handleDownload = async (format) => {
+
+  const handleDownloadGeneral = async (type = "sales", format = "pdf") => {
     setDownloading(true);
     let url = "";
     let fileName = "";
     let mimeType = format === "pdf" ? "application/pdf" : "text/csv";
     const timestamp = new Date().toISOString().slice(0, 10);
-    if (reportType === "sales") {
+    if (type === "sales") {
       url = api.reports.getSalesPdfUrl(`period=${period}`);
       fileName = `SalesReport_${period}_${timestamp}.pdf`;
-    } else if (reportType === "topItems") {
-      url = api.reports.getSalesPdfUrl(`period=year`);
-      fileName = `TopSales_Yearly_${timestamp}.pdf`;
-    } else if (reportType === "inventory") {
+    } else if (type === "inventory") {
       url = api.reports.getInventoryPdfUrl();
       fileName = `InventoryReport_${timestamp}.pdf`;
-    } else if (reportType === "parties") {
+    } else if (type === "parties") {
       url = api.reports.getPartiesPdfUrl();
       fileName = `CustomerLedger_${timestamp}.pdf`;
     }
@@ -218,779 +179,647 @@ export default function ReportsScreen({ isActive = true, onOpenDrawer, onBack })
       setDownloading(false);
     }
   };
+
+  // Top 5 essential popular reports for quick access
+  const POPULAR_REPORT_IDS = [
+    "daily_sales_summary",
+    "gstr1_summary",
+    "item_wise_sales",
+    "low_stock_reorder",
+    "table_turnover_rate",
+  ];
+  const popularReports = REPORTS_CATALOG.filter((r) => POPULAR_REPORT_IDS.includes(r.id));
+
+  // Filtered reports for search
+  const isSearching = Boolean(hubSearch.trim());
+  const searchResults = isSearching
+    ? REPORTS_CATALOG.filter(
+        (r) =>
+          r.title?.toLowerCase().includes(hubSearch.toLowerCase()) ||
+          r.description?.toLowerCase().includes(hubSearch.toLowerCase()) ||
+          r.category?.toLowerCase().includes(hubSearch.toLowerCase())
+      )
+    : [];
+
   return (
     <View style={{ flex: 1 }} className="flex-1 bg-slate-50">
-      <View style={{ paddingTop: headerTopPadding }} className="bg-blue-600 px-4 pb-4 shadow-md">
+      {/* ── Header ── */}
+      <View style={{ paddingTop: headerTopPadding }} className="bg-slate-900 px-4 pb-3 shadow-sm">
         <ResponsiveContainer maxWidth={1120} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-        <View className="flex-row items-center">
-          {!isWide && (
-            <TouchableOpacity onPress={onOpenDrawer} className="mr-3 p-1">
-              <Ionicons name="menu" size={26} color="#FFFFFF" />
-            </TouchableOpacity>
-          )}
-          <View>
-            <Text className="text-white text-lg font-black tracking-wide">
-              Reports & Downloads
-            </Text>
-            <Text className="text-blue-100 text-[10px] font-medium">
-              Sales, Stock & Customer Ledgers
-            </Text>
+          <View className="flex-row items-center">
+            {!isWide && (
+              <TouchableOpacity onPress={onOpenDrawer} className="mr-3 p-1">
+                <Ionicons name="menu" size={26} color="#FFFFFF" />
+              </TouchableOpacity>
+            )}
+            <View>
+              <Text className="text-white text-lg font-black tracking-wide">
+                Analytics & Reports
+              </Text>
+              <Text className="text-slate-400 text-[10px] font-medium">
+                Real-time metrics, tax compliance & full catalog
+              </Text>
+            </View>
           </View>
-        </View>
-        <TouchableOpacity
-          onPress={loadData}
-          disabled={loading}
-          className="bg-blue-500/80 p-2 rounded-xl"
-        >
-          <Ionicons name="refresh" size={18} color="#FFFFFF" />
-        </TouchableOpacity>
+          <TouchableOpacity
+            onPress={loadData}
+            disabled={loading}
+            className="bg-slate-800 p-2 rounded-xl border border-slate-700"
+          >
+            {loading ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Ionicons name="refresh" size={18} color="#FFFFFF" />
+            )}
+          </TouchableOpacity>
         </ResponsiveContainer>
       </View>
-      <View className="bg-white border-b border-slate-200 px-2 py-2">
-        <ResponsiveContainer maxWidth={1120} style={{ flexDirection: "row", justifyContent: "space-around" }}>
-        <TouchableOpacity
-          onPress={() => setReportType("hub")}
-          className={`flex-1 py-2 rounded-xl items-center flex-row justify-center mx-1 ${
-            reportType === "hub" ? "bg-blue-600 shadow-sm" : "bg-slate-100"
-          }`}
-        >
-          <Ionicons
-            name="apps"
-            size={14}
-            color={reportType === "hub" ? "#FFFFFF" : "#475569"}
-          />
-          <Text
-            className={`text-xs font-black ml-1.5 ${
-              reportType === "hub" ? "text-white" : "text-slate-700"
+
+      {/* ── Clean 2-Tab Navigation Switcher ── */}
+      <View className="bg-white border-b border-slate-200 px-3 py-2">
+        <ResponsiveContainer maxWidth={1120} style={{ flexDirection: "row" }}>
+          <TouchableOpacity
+            onPress={() => setActiveTab("overview")}
+            className={`flex-1 py-2.5 rounded-xl items-center flex-row justify-center mx-1 transition-all ${
+              activeTab === "overview" ? "bg-blue-600 shadow-xs" : "bg-slate-100"
             }`}
           >
-            55+ Hub
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => setReportType("sales")}
-          className={`flex-1 py-2 rounded-xl items-center flex-row justify-center mx-1 ${
-            reportType === "sales" ? "bg-blue-600 shadow-sm" : "bg-slate-100"
-          }`}
-        >
-          <Ionicons
-            name="bar-chart"
-            size={14}
-            color={reportType === "sales" ? "#FFFFFF" : "#475569"}
-          />
-          <Text
-            className={`text-xs font-bold ml-1.5 ${
-              reportType === "sales" ? "text-white" : "text-slate-700"
+            <Ionicons
+              name="stats-chart"
+              size={15}
+              color={activeTab === "overview" ? "#FFFFFF" : "#64748B"}
+            />
+            <Text
+              className={`text-xs font-black ml-1.5 ${
+                activeTab === "overview" ? "text-white" : "text-slate-700"
+              }`}
+            >
+              Overview & KPIs
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => setActiveTab("hub")}
+            className={`flex-1 py-2.5 rounded-xl items-center flex-row justify-center mx-1 transition-all ${
+              activeTab === "hub" ? "bg-blue-600 shadow-xs" : "bg-slate-100"
             }`}
           >
-            Sales
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => setReportType("inventory")}
-          className={`flex-1 py-2 rounded-xl items-center flex-row justify-center mx-1 ${
-            reportType === "inventory" ? "bg-blue-600 shadow-sm" : "bg-slate-100"
-          }`}
-        >
-          <Ionicons
-            name="cube"
-            size={14}
-            color={reportType === "inventory" ? "#FFFFFF" : "#475569"}
-          />
-          <Text
-            className={`text-xs font-bold ml-1.5 ${
-              reportType === "inventory" ? "text-white" : "text-slate-700"
-            }`}
-          >
-            Inventory
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => setReportType("parties")}
-          className={`flex-1 py-2 rounded-xl items-center flex-row justify-center mx-1 ${
-            reportType === "parties" ? "bg-blue-600 shadow-sm" : "bg-slate-100"
-          }`}
-        >
-          <Ionicons
-            name="people"
-            size={14}
-            color={reportType === "parties" ? "#FFFFFF" : "#475569"}
-          />
-          <Text
-            className={`text-xs font-bold ml-1.5 ${
-              reportType === "parties" ? "text-white" : "text-slate-700"
-            }`}
-          >
-            Customers
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => setReportType("topItems")}
-          className={`flex-1 py-2 rounded-xl items-center flex-row justify-center mx-1 ${
-            reportType === "topItems" ? "bg-blue-600 shadow-sm" : "bg-slate-100"
-          }`}
-        >
-          <Ionicons
-            name="trophy"
-            size={14}
-            color={reportType === "topItems" ? "#FFFFFF" : "#475569"}
-          />
-          <Text
-            className={`text-xs font-bold ml-1.5 ${
-              reportType === "topItems" ? "text-white" : "text-slate-700"
-            }`}
-          >
-            Top Sellers
-          </Text>
-        </TouchableOpacity>
+            <Ionicons
+              name="folder-open"
+              size={15}
+              color={activeTab === "hub" ? "#FFFFFF" : "#64748B"}
+            />
+            <Text
+              className={`text-xs font-black ml-1.5 ${
+                activeTab === "hub" ? "text-white" : "text-slate-700"
+              }`}
+            >
+              All Reports (55+)
+            </Text>
+          </TouchableOpacity>
         </ResponsiveContainer>
       </View>
+
+      {/* ── Main Content Area ── */}
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: isWide ? 20 : 14, paddingBottom: 120, flexGrow: 1 }}
         showsVerticalScrollIndicator={true}
         keyboardShouldPersistTaps="handled"
-        nestedScrollEnabled={true}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={loadData} />}
       >
         <ResponsiveContainer maxWidth={1120}>
-        {reportType === "hub" && (
-          <View className="mb-6">
-            {/* Search and Period Bar */}
-            <View className="bg-white p-3 rounded-2xl border border-gray-200 shadow-sm mb-4">
-              <View className="flex-row items-center bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 mb-3">
-                <Ionicons name="search" size={18} color="#6B7280" />
-                <TextInput
-                  className="flex-1 text-xs text-gray-900 ml-2 font-medium"
-                  placeholder="Search 55+ reports by name, category, or keyword..."
-                  value={hubSearch}
-                  onChangeText={setHubSearch}
-                  placeholderTextColor="#9CA3AF"
-                />
-                {hubSearch ? (
-                  <TouchableOpacity onPress={() => setHubSearch("")} className="p-1">
-                    <Ionicons name="close-circle" size={16} color="#9CA3AF" />
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-
-              {/* Time Period Filter Pills */}
-              <View className="flex-row gap-1.5 flex-wrap">
+          {/* ═══════════════════════════════════════════════════════════════ */}
+          {/* TAB 1: OVERVIEW & KPIS (CLEAN & UNCLUTTERED)                  */}
+          {/* ═══════════════════════════════════════════════════════════════ */}
+          {activeTab === "overview" && (
+            <View>
+              {/* Period Selector Pills */}
+              <View className="flex-row gap-1.5 mb-4 bg-white p-1.5 rounded-2xl border border-slate-200">
                 {[
                   { id: "today", label: "Today" },
                   { id: "yesterday", label: "Yesterday" },
                   { id: "week", label: "Last 7 Days" },
                   { id: "month", label: "This Month" },
-                  { id: "365", label: "Yearly (365d)" },
+                  { id: "365", label: "Yearly" },
                 ].map((p) => {
-                  const isSelected = hubPeriod === p.id;
+                  const isSelected = period === p.id;
                   return (
                     <TouchableOpacity
                       key={p.id}
-                      onPress={() => setHubPeriod(p.id)}
-                      style={{
-                        backgroundColor: isSelected ? "#2563EB" : "#F1F5F9",
-                        borderColor: isSelected ? "#2563EB" : "#E2E8F0",
-                      }}
-                      className="px-3 py-1.5 rounded-lg border items-center justify-center flex-1"
+                      onPress={() => setPeriod(p.id)}
+                      className={`flex-1 py-2 rounded-xl items-center justify-center ${
+                        isSelected ? "bg-blue-600 shadow-xs" : "bg-transparent"
+                      }`}
                     >
-                      <Text className={`text-[11px] font-bold ${isSelected ? "text-white" : "text-gray-700"}`}>
+                      <Text
+                        className={`text-xs font-bold ${
+                          isSelected ? "text-white" : "text-slate-600"
+                        }`}
+                      >
                         {p.label}
                       </Text>
                     </TouchableOpacity>
                   );
                 })}
               </View>
-            </View>
 
-            {/* Category Filter Pills (Horizontal Scroll) */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4">
-              {catalogCategories.map((c) => {
-                const isSelected = hubCategory === c.id;
-                return (
-                  <TouchableOpacity
-                    key={c.id}
-                    onPress={() => setHubCategory(c.id)}
-                    style={{
-                      backgroundColor: isSelected ? "#1E293B" : "#FFFFFF",
-                      borderColor: isSelected ? "#1E293B" : "#CBD5E1",
-                    }}
-                    className="flex-row items-center px-3.5 py-2 rounded-xl border mr-2 shadow-xs"
-                  >
-                    <Ionicons
-                      name={c.icon || "apps"}
-                      size={14}
-                      color={isSelected ? "#FFFFFF" : "#64748B"}
-                      style={{ marginRight: 6 }}
-                    />
-                    <Text className={`text-xs font-black ${isSelected ? "text-white" : "text-gray-800"}`}>
-                      {c.label} ({c.count})
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-
-            {/* Active Count & Export Notice */}
-            <View className="flex-row items-center justify-between px-1 mb-3">
-              <Text className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-                Available Reports ({catalogReports.filter((r) => (hubCategory === "all" || r.category === hubCategory) && (!hubSearch.trim() || r.title?.toLowerCase().includes(hubSearch.toLowerCase()) || r.description?.toLowerCase().includes(hubSearch.toLowerCase()))).length})
-              </Text>
-              <Text className="text-[11px] font-semibold text-blue-600">
-                Period: {hubPeriod.toUpperCase()}
-              </Text>
-            </View>
-
-            {/* Reports Grid */}
-            <View className="flex-row flex-wrap justify-between gap-y-3">
-              {catalogReports
-                .filter((r) => {
-                  const matchesCat = hubCategory === "all" || r.category === hubCategory;
-                  const matchesSearch = hubSearch.trim()
-                    ? r.title?.toLowerCase().includes(hubSearch.toLowerCase()) ||
-                      r.description?.toLowerCase().includes(hubSearch.toLowerCase()) ||
-                      r.category?.toLowerCase().includes(hubSearch.toLowerCase())
-                    : true;
-                  return matchesCat && matchesSearch;
-                })
-                .map((report) => (
-                  <View
-                    key={report.id}
-                    style={{
-                      width: isWide ? "48.8%" : "100%",
-                      backgroundColor: "#FFFFFF",
-                      borderRadius: 16,
-                      borderWidth: 1,
-                      borderColor: "#E2E8F0",
-                      padding: 14,
-                      shadowColor: "#000",
-                      shadowOffset: { width: 0, height: 1 },
-                      shadowOpacity: 0.04,
-                      shadowRadius: 3,
-                      elevation: 1,
-                      justifyContent: "space-between",
-                    }}
-                  >
-                    <View>
-                      <View className="flex-row items-center justify-between mb-2">
-                        <View className="flex-row items-center flex-1 mr-2">
-                          <View style={{ backgroundColor: "#EFF6FF" }} className="w-8 h-8 rounded-xl items-center justify-center mr-2.5">
-                            <Ionicons name={report.icon || "document-text"} size={16} color="#2563EB" />
-                          </View>
-                          <Text className="text-sm font-extrabold text-gray-900 flex-1" numberOfLines={1}>
-                            {report.title}
-                          </Text>
-                        </View>
-                        <View style={{ backgroundColor: "#F1F5F9" }} className="px-2 py-0.5 rounded-full border border-gray-200">
-                          <Text className="text-[10px] font-extrabold text-gray-600 uppercase">
-                            {report.category}
-                          </Text>
-                        </View>
-                      </View>
-
-                      <Text className="text-xs text-gray-600 mb-3 leading-relaxed" numberOfLines={2}>
-                        {report.description}
-                      </Text>
-                    </View>
-
-                    <View className="flex-row gap-2 pt-2 border-t border-gray-100">
-                      <TouchableOpacity
-                        onPress={() => handleOpenReportViewer(report)}
-                        className="flex-1 bg-blue-600 py-2 rounded-xl flex-row items-center justify-center shadow-xs"
-                      >
-                        <Ionicons name="eye-outline" size={14} color="#FFFFFF" />
-                        <Text className="text-white text-xs font-extrabold ml-1.5">View</Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        onPress={() => handleDownloadHubReport(report, "pdf")}
-                        disabled={downloadingReport}
-                        className="px-3 py-2 rounded-xl border border-gray-300 bg-gray-50 flex-row items-center justify-center"
-                      >
-                        <Ionicons name="document-text-outline" size={14} color="#DC2626" />
-                        <Text className="text-gray-800 text-xs font-bold ml-1">PDF</Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        onPress={() => handleDownloadHubReport(report, "csv")}
-                        disabled={downloadingReport}
-                        className="px-3 py-2 rounded-xl border border-gray-300 bg-gray-50 flex-row items-center justify-center"
-                      >
-                        <Ionicons name="download-outline" size={14} color="#059669" />
-                        <Text className="text-gray-800 text-xs font-bold ml-1">CSV</Text>
-                      </TouchableOpacity>
-                    </View>
+              {/* 4 Clean Hero KPI Cards */}
+              <View className="flex-row gap-2.5 mb-2.5">
+                <View className="flex-1 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
+                  <View className="flex-row items-center justify-between">
+                    <Text className="text-[11px] font-bold text-slate-500 uppercase">Gross Sales</Text>
+                    <Ionicons name="cash-outline" size={16} color="#2563EB" />
                   </View>
-                ))}
-            </View>
-          </View>
-        )}
+                  <Text className="text-xl font-black text-slate-900 mt-1">
+                    Rs. {Number(salesData?.summary?.totalSales || 0).toLocaleString("en-IN")}
+                  </Text>
+                  <Text className="text-[10px] text-slate-400 mt-0.5">
+                    {salesData?.summary?.totalBills || 0} Bills Generated
+                  </Text>
+                </View>
 
-        {reportType === "sales" && (
-          <View className="flex-row gap-2 mb-4">
-            {[
-              { id: "today", label: "Today" },
-              { id: "yesterday", label: "Yesterday" },
-              { id: "week", label: "Last 7 Days" },
-              { id: "month", label: "This Month" },
-            ].map((p) => (
-              <TouchableOpacity
-                key={p.id}
-                onPress={() => setPeriod(p.id)}
-                className={`flex-1 py-1.5 rounded-lg items-center border ${
-                  period === p.id
-                    ? "bg-blue-50 border-blue-600"
-                    : "bg-white border-gray-200"
-                }`}
-              >
-                <Text
-                  className={`text-[11px] font-bold ${
-                    period === p.id ? "text-blue-700" : "text-gray-600"
-                  }`}
-                >
-                  {p.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-        {reportType !== "hub" && (
-        <View className="bg-white rounded-2xl p-4 mb-4 border border-gray-200 shadow-sm">
-          <Text className="text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">
-            Download Report File
-          </Text>
-          <Text className="text-xs text-gray-500 mb-3">
-            Export official formatted PDF reports for your accountant, tax filings, or store records.
-          </Text>
-          <TouchableOpacity
-            onPress={() => handleDownload("pdf")}
-            disabled={downloading}
-            className="w-full bg-red-600 py-3.5 rounded-xl flex-row items-center justify-center shadow-sm active:bg-red-700"
-          >
-            {downloading ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <>
-                <Ionicons name="document-text" size={18} color="#FFFFFF" />
-                <Text className="text-white font-extrabold text-sm ml-2">
-                  Download Official PDF Report
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
-        )}
-        {reportType === "sales" && salesData && (
-          <View className="mb-4">
-            <View className="flex-row gap-2.5 mb-2.5">
-              <View className="flex-1 bg-white p-3.5 rounded-2xl border border-gray-200 shadow-sm">
-                <Text className="text-[11px] font-bold text-gray-500">Total Sales</Text>
-                <Text className="text-xl font-black text-gray-900 mt-1">
-                  Rs. {Number(salesData.summary?.totalSales || 0).toLocaleString("en-IN")}
-                </Text>
-                <Text className="text-[10px] text-gray-400 mt-0.5">
-                  {salesData.summary?.totalBills || 0} Bills Generated
-                </Text>
+                <View className="flex-1 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
+                  <View className="flex-row items-center justify-between">
+                    <Text className="text-[11px] font-bold text-slate-500 uppercase">Discounts</Text>
+                    <Ionicons name="pricetag-outline" size={16} color="#059669" />
+                  </View>
+                  <Text className="text-xl font-black text-emerald-600 mt-1">
+                    Rs. {Number(salesData?.summary?.totalDiscount || 0).toLocaleString("en-IN")}
+                  </Text>
+                  <Text className="text-[10px] text-slate-400 mt-0.5">
+                    Diner Savings Given
+                  </Text>
+                </View>
               </View>
-              <View className="flex-1 bg-white p-3.5 rounded-2xl border border-gray-200 shadow-sm">
-                <Text className="text-[11px] font-bold text-gray-500">Discounts Given</Text>
-                <Text className="text-xl font-black text-emerald-600 mt-1">
-                  Rs. {Number(salesData.summary?.totalDiscount || 0).toLocaleString("en-IN")}
-                </Text>
-                <Text className="text-[10px] text-gray-400 mt-0.5">Customer Savings</Text>
+
+              {/* Payment Split & Tax Row */}
+              <View className="flex-row gap-2 mb-3">
+                <View className="flex-1 bg-emerald-50/80 p-3 rounded-xl border border-emerald-200">
+                  <Text className="text-[10px] font-bold text-emerald-800">Cash Collected</Text>
+                  <Text className="text-sm font-black text-emerald-950 mt-0.5">
+                    Rs. {Number(salesData?.summary?.totalCash || 0).toLocaleString("en-IN")}
+                  </Text>
+                </View>
+                <View className="flex-1 bg-blue-50/80 p-3 rounded-xl border border-blue-200">
+                  <Text className="text-[10px] font-bold text-blue-800">UPI Received</Text>
+                  <Text className="text-sm font-black text-blue-950 mt-0.5">
+                    Rs. {Number(salesData?.summary?.totalUpi || 0).toLocaleString("en-IN")}
+                  </Text>
+                </View>
+                <View className="flex-1 bg-slate-100 p-3 rounded-xl border border-slate-300">
+                  <Text className="text-[10px] font-bold text-slate-700">GST Collected</Text>
+                  <Text className="text-sm font-black text-slate-900 mt-0.5">
+                    Rs. {Number(salesData?.summary?.totalTax || 0).toLocaleString("en-IN")}
+                  </Text>
+                </View>
               </View>
-            </View>
-            <View className="flex-row gap-2.5">
-              <View className="flex-1 bg-emerald-50/70 p-3 rounded-xl border border-emerald-200">
-                <Text className="text-[10px] font-bold text-emerald-800">Cash Collected</Text>
-                <Text className="text-sm font-black text-emerald-900 mt-0.5">
-                  Rs. {Number(salesData.summary?.totalCash || 0).toLocaleString("en-IN")}
+
+              {/* Channel Distribution (Dine-in / Swiggy / Zomato) */}
+              <View className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs mb-4">
+                <Text className="text-xs font-black text-slate-800 mb-2 uppercase tracking-wide">
+                  Order Channels Breakdown
                 </Text>
+                <View className="flex-row gap-2">
+                  <View className="flex-1 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                    <Text className="text-[10px] font-bold text-slate-600">Dine-in / Counter</Text>
+                    <Text className="text-sm font-black text-slate-900 mt-0.5">
+                      Rs. {Number(salesData?.summary?.totalCounter || 0).toLocaleString("en-IN")}
+                    </Text>
+                    <Text className="text-[10px] text-slate-400">
+                      {salesData?.summary?.counterOrders || 0} orders
+                    </Text>
+                  </View>
+                  <View className="flex-1 bg-orange-50/70 p-2.5 rounded-xl border border-orange-200">
+                    <Text className="text-[10px] font-bold text-orange-700">Swiggy Delivery</Text>
+                    <Text className="text-sm font-black text-orange-950 mt-0.5">
+                      Rs. {Number(salesData?.summary?.totalSwiggy || 0).toLocaleString("en-IN")}
+                    </Text>
+                    <Text className="text-[10px] text-orange-600">
+                      {salesData?.summary?.swiggyOrders || 0} orders
+                    </Text>
+                  </View>
+                  <View className="flex-1 bg-red-50/70 p-2.5 rounded-xl border border-red-200">
+                    <Text className="text-[10px] font-bold text-red-700">Zomato Delivery</Text>
+                    <Text className="text-sm font-black text-red-950 mt-0.5">
+                      Rs. {Number(salesData?.summary?.totalZomato || 0).toLocaleString("en-IN")}
+                    </Text>
+                    <Text className="text-[10px] text-red-600">
+                      {salesData?.summary?.zomatoOrders || 0} orders
+                    </Text>
+                  </View>
+                </View>
               </View>
-              <View className="flex-1 bg-blue-50/70 p-3 rounded-xl border border-blue-200">
-                <Text className="text-[10px] font-bold text-blue-800">UPI Received</Text>
-                <Text className="text-sm font-black text-blue-900 mt-0.5">
-                  Rs. {Number(salesData.summary?.totalUpi || 0).toLocaleString("en-IN")}
-                </Text>
-              </View>
-              <View className="flex-1 bg-slate-100 p-3 rounded-xl border border-slate-300">
-                <Text className="text-[10px] font-bold text-slate-700">GST Collected</Text>
-                <Text className="text-sm font-black text-slate-900 mt-0.5">
-                  Rs. {Number(salesData.summary?.totalTax || 0).toLocaleString("en-IN")}
-                </Text>
-              </View>
-            </View>
-            <View className="flex-row gap-2.5 mt-2.5">
-              <View className="flex-1 bg-slate-100 p-3 rounded-xl border border-slate-200">
-                <Text className="text-[10px] font-bold text-slate-600">Counter / Store</Text>
-                <Text className="text-sm font-black text-slate-900 mt-0.5">
-                  Rs. {Number(salesData.summary?.totalCounter || 0).toLocaleString("en-IN")}
-                </Text>
-                <Text className="text-[10px] text-slate-500">
-                  {salesData.summary?.counterOrders || 0} orders
-                </Text>
-              </View>
-              <View className="flex-1 bg-blue-50 p-3 rounded-xl border border-blue-200">
-                <Text className="text-[10px] font-bold text-blue-700">Swiggy Orders</Text>
-                <Text className="text-sm font-black text-blue-900 mt-0.5">
-                  Rs. {Number(salesData.summary?.totalSwiggy || 0).toLocaleString("en-IN")}
-                </Text>
-                <Text className="text-[10px] text-blue-700">
-                  {salesData.summary?.swiggyOrders || 0} orders
-                </Text>
-              </View>
-              <View className="flex-1 bg-emerald-50 p-3 rounded-xl border border-emerald-200">
-                <Text className="text-[10px] font-bold text-emerald-700">Zomato Orders</Text>
-                <Text className="text-sm font-black text-emerald-900 mt-0.5">
-                  Rs. {Number(salesData.summary?.totalZomato || 0).toLocaleString("en-IN")}
-                </Text>
-                <Text className="text-[10px] text-emerald-700">
-                  {salesData.summary?.zomatoOrders || 0} orders
-                </Text>
-              </View>
-            </View>
-          </View>
-        )}
-        {reportType === "inventory" && (
-          <View className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm mb-4">
-            <View className="flex-row justify-between items-center">
-              <View>
-                <Text className="text-xs text-gray-500 font-bold">Total Catalog Items</Text>
-                <Text className="text-2xl font-black text-gray-900 mt-0.5">
-                  {inventoryItems.length} Products
-                </Text>
-              </View>
-              <View className="items-end">
-                <Text className="text-xs text-gray-500 font-bold">Stock Valuation</Text>
-                <Text className="text-lg font-black text-emerald-600 mt-0.5">
-                  Rs.{" "}
-                  {inventoryItems
-                    .reduce((acc, it) => acc + (it.stock || 0) * (it.sellingPrice || 0), 0)
-                    .toLocaleString("en-IN")}
-                </Text>
-              </View>
-            </View>
-          </View>
-        )}
-        {reportType === "parties" && (
-          <View className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm mb-4">
-            <View className="flex-row justify-between items-center">
-              <View>
-                <Text className="text-xs text-gray-500 font-bold">Total Customers</Text>
-                <Text className="text-2xl font-black text-gray-900 mt-0.5">
-                  {parties.length} Customers
-                </Text>
-              </View>
-              <View className="items-end">
-                <Text className="text-xs text-gray-500 font-bold">Total Receivables (Udhar)</Text>
-                <Text className="text-lg font-black text-red-600 mt-0.5">
-                  Rs.{" "}
-                  {parties
-                    .reduce((acc, p) => acc + (p.balance || 0), 0)
-                    .toLocaleString("en-IN")}
-                </Text>
-              </View>
-            </View>
-          </View>
-        )}
-        {reportType === "topItems" && (
-          <View className="mb-4">
-            {/* Top Period Selector */}
-            <View className="flex-row gap-2 mb-3">
-              {[
-                { days: 365, label: "Yearly (365d)" },
-                { days: 30, label: "Monthly (30d)" },
-                { days: 7, label: "Weekly (7d)" },
-              ].map((p) => (
-                <TouchableOpacity
-                  key={p.days}
-                  onPress={() => setTopDays(p.days)}
-                  className={`flex-1 py-2 rounded-xl items-center border ${
-                    topDays === p.days
-                      ? "bg-blue-50 border-blue-500 shadow-xs"
-                      : "bg-white border-gray-200"
-                  }`}
-                >
-                  <Text
-                    className={`text-xs font-black ${
-                      topDays === p.days ? "text-blue-700" : "text-gray-600"
-                    }`}
+
+              {/* Quick Export Strip (Single Row, 0 Clutter) */}
+              <View className="bg-white p-3 rounded-2xl border border-slate-200 shadow-xs mb-4 flex-row items-center justify-between">
+                <View className="flex-1 mr-3">
+                  <Text className="text-xs font-black text-slate-900">
+                    Instant Official PDF Exports
+                  </Text>
+                  <Text className="text-[10px] text-slate-500">
+                    Generate formatted A4 audit reports for {period.toUpperCase()}
+                  </Text>
+                </View>
+                <View className="flex-row gap-2">
+                  <TouchableOpacity
+                    onPress={() => handleDownloadGeneral("sales", "pdf")}
+                    disabled={downloading}
+                    className="bg-red-600 px-3 py-2 rounded-xl flex-row items-center shadow-xs"
                   >
-                    {p.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+                    <Ionicons name="document-text" size={14} color="#FFFFFF" />
+                    <Text className="text-white text-xs font-extrabold ml-1.5">Sales PDF</Text>
+                  </TouchableOpacity>
 
-            {/* Prominent Category-Wise Selling Per Day Trigger */}
-            <TouchableOpacity
-              onPress={handleOpenCategorySales}
-              className="bg-blue-600 rounded-2xl p-4 mb-3 flex-row items-center justify-between shadow-md active:bg-blue-700"
-            >
-              <View className="flex-row items-center flex-1 mr-3">
-                <View className="w-11 h-11 rounded-xl bg-white/20 items-center justify-center mr-3">
-                  <Ionicons name="pie-chart" size={22} color="#FFFFFF" />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-white text-sm font-black tracking-wide">
-                    Category-Wise Selling Per Day
-                  </Text>
-                  <Text className="text-blue-100 text-[11px] mt-0.5">
-                    Tap to view day-by-day category breakdown for the whole year ➔
-                  </Text>
+                  <TouchableOpacity
+                    onPress={() => handleDownloadGeneral("parties", "pdf")}
+                    disabled={downloading}
+                    className="bg-blue-600 px-3 py-2 rounded-xl flex-row items-center shadow-xs"
+                  >
+                    <Ionicons name="people" size={14} color="#FFFFFF" />
+                    <Text className="text-white text-xs font-extrabold ml-1.5">Ledger PDF</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
-              <Ionicons name="chevron-forward-circle" size={26} color="#FFFFFF" />
-            </TouchableOpacity>
 
-            {/* Overall Top Ranked Items in this Period */}
-            {overallTopData.length > 0 ? (
-              <View className="bg-white rounded-2xl p-4 border border-blue-200 shadow-sm mb-3">
-                <View className="flex-row items-center justify-between mb-2.5">
+              {/* Overall Top Selling Items Banner */}
+              <View className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs mb-4">
+                <View className="flex-row items-center justify-between mb-3">
                   <View className="flex-row items-center">
-                    <Ionicons name="ribbon" size={18} color="#2563EB" />
-                    <Text className="text-xs font-black text-gray-900 ml-1.5 uppercase tracking-wider">
-                      Overall Top Sellers ({topDays === 365 ? "Whole Year" : `${topDays} Days`})
+                    <Ionicons name="trophy" size={18} color="#EAB308" />
+                    <Text className="text-xs font-black text-slate-900 ml-1.5 uppercase tracking-wider">
+                      Top Selling Dishes
                     </Text>
                   </View>
-                  <TouchableOpacity onPress={handleOpenCategorySales}>
-                    <Text className="text-[11px] font-bold text-blue-600">Categories ➔</Text>
+                  <TouchableOpacity
+                    onPress={handleOpenCategorySales}
+                    className="bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200 flex-row items-center"
+                  >
+                    <Text className="text-[11px] font-bold text-blue-700">Category Breakdown ➔</Text>
                   </TouchableOpacity>
                 </View>
-                {overallTopData.slice(0, 5).map((it, idx) => (
-                  <TouchableOpacity
-                    key={idx}
-                    onPress={handleOpenCategorySales}
-                    className="flex-row items-center justify-between py-2 border-b border-gray-100 last:border-b-0"
-                  >
-                    <View className="flex-row items-center flex-1 pr-2">
-                      <View
-                        style={{
-                          backgroundColor: idx === 0 ? "#2563EB" : idx === 1 ? "#059669" : idx === 2 ? "#475569" : "#F3F4F6",
-                          width: 22,
-                          height: 22,
-                          borderRadius: 11,
-                          alignItems: "center",
-                          justifyContent: "center",
-                          marginRight: 8,
-                        }}
-                      >
-                        <Text style={{ fontSize: 10, fontWeight: "900", color: idx < 3 ? "#FFFFFF" : "#64748B" }}>
-                          {idx + 1}
-                        </Text>
-                      </View>
-                      <View className="flex-1">
-                        <Text className="text-xs font-bold text-gray-900" numberOfLines={1}>
-                          {it.name || "Item"}
-                        </Text>
-                        <Text className="text-[10px] text-gray-500">
-                          {it.category ? `${it.category} • ` : ""}Total Qty: <Text className="font-extrabold text-blue-700">{it.totalQty}</Text>
-                        </Text>
-                      </View>
-                    </View>
-                    <View className="items-end">
-                      <Text className="text-xs font-black text-emerald-700">
-                        Rs. {Number(it.totalRevenue || 0).toLocaleString("en-IN")}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            ) : null}
 
-            <View className="bg-white p-3.5 rounded-2xl border border-blue-200 shadow-sm">
-              <View className="flex-row items-center">
-                <Ionicons name="calendar-outline" size={16} color="#2563EB" />
-                <Text className="text-xs text-blue-700 font-extrabold ml-1.5">
-                  Day-by-Day Top Selling Products ({topDays === 365 ? "Yearly" : `${topDays} Days`})
-                </Text>
-              </View>
-              <Text className="text-[10px] text-gray-400 mt-0.5">
-                Daily breakdown of items ranked by volume sold
-              </Text>
-            </View>
-          </View>
-        )}
-        <View className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden mb-6">
-          <View className="bg-gray-100 px-4 py-3 border-b border-gray-200 flex-row justify-between items-center">
-            <Text className="text-xs font-bold text-gray-700 uppercase tracking-wide">
-              {reportType === "sales"
-                ? `Invoices (${salesData?.invoices?.length || 0})`
-                : reportType === "inventory"
-                ? `Stock Items (${inventoryItems.length})`
-                : reportType === "topItems"
-                ? `Daily Top Selling Breakdown`
-                : `Customer Ledger (${parties.length})`}
-            </Text>
-            <Text className="text-[10px] text-gray-400 font-medium">Recent Records</Text>
-          </View>
-          {loading ? (
-            <View className="py-12 items-center">
-              <ActivityIndicator size="small" color="#2563EB" />
-              <Text className="text-xs text-gray-400 mt-2">Loading report records...</Text>
-            </View>
-          ) : reportType === "topItems" ? (
-            topItemsData.length === 0 ? (
-              <View className="py-10 items-center">
-                <Ionicons name="trophy-outline" size={40} color="#D1D5DB" />
-                <Text className="text-xs text-gray-400 mt-3">No sales data in this period</Text>
-                <Text className="text-[11px] text-gray-300 mt-1">Create some invoices to see top selling items here</Text>
-              </View>
-            ) : (
-              topItemsData.map((dayData, dayIdx) => (
-                <TouchableOpacity
-                  key={dayIdx}
-                  activeOpacity={0.85}
-                  onPress={handleOpenCategorySales}
-                >
-                  <View className="flex-row items-center justify-between px-4 py-2 bg-blue-50 border-b border-blue-100">
-                    <View className="flex-row items-center">
-                      <Ionicons name="calendar-outline" size={13} color="#2563EB" />
-                      <Text className="text-xs font-extrabold text-blue-700 ml-2">
-                        {new Date(dayData.date).toLocaleDateString("en-IN", { weekday: "short", day: "2-digit", month: "short", year: "numeric" })}
-                      </Text>
-                    </View>
-                    <Text className="text-[10px] font-bold text-blue-600">Category details ➔</Text>
+                {overallTopData.length === 0 ? (
+                  <View className="py-4 items-center">
+                    <Text className="text-xs text-slate-400">No dish sales recorded yet in this period</Text>
                   </View>
-                  {(dayData.topItems || []).map((it, idx) => (
-                    <View key={idx} className="px-4 py-3 border-b border-gray-100 flex-row items-center">
-                      <View
-                        style={{ backgroundColor: idx === 0 ? "#FBBF24" : idx === 1 ? "#9CA3AF" : idx === 2 ? "#B45309" : "#F3F4F6", width: 24, height: 24, borderRadius: 12, alignItems: "center", justifyContent: "center", marginRight: 10 }}
-                      >
-                        <Text style={{ fontSize: 10, fontWeight: "900", color: idx < 3 ? "#FFFFFF" : "#6B7280" }}>{idx + 1}</Text>
-                      </View>
-                      <View className="flex-1">
-                        <Text className="text-xs font-bold text-gray-900" numberOfLines={1}>{it.name || "Unknown Item"}</Text>
-                        <Text className="text-[10px] text-gray-500 mt-0.5">Qty sold: <Text className="font-bold text-blue-700">{it.totalQty}</Text></Text>
+                ) : (
+                  overallTopData.slice(0, 4).map((it, idx) => (
+                    <View
+                      key={idx}
+                      className="flex-row items-center justify-between py-2 border-b border-slate-100 last:border-b-0"
+                    >
+                      <View className="flex-row items-center flex-1 pr-2">
+                        <View
+                          style={{
+                            backgroundColor: idx === 0 ? "#EAB308" : idx === 1 ? "#94A3B8" : idx === 2 ? "#B45309" : "#F1F5F9",
+                            width: 22,
+                            height: 22,
+                            borderRadius: 11,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            marginRight: 8,
+                          }}
+                        >
+                          <Text style={{ fontSize: 10, fontWeight: "900", color: idx < 3 ? "#FFFFFF" : "#64748B" }}>
+                            {idx + 1}
+                          </Text>
+                        </View>
+                        <View className="flex-1">
+                          <Text className="text-xs font-bold text-slate-900" numberOfLines={1}>
+                            {it.name || "Item"}
+                          </Text>
+                          <Text className="text-[10px] text-slate-500">
+                            {it.category ? `${it.category} • ` : ""}Sold: <Text className="font-extrabold text-blue-700">{it.totalQty} units</Text>
+                          </Text>
+                        </View>
                       </View>
                       <View className="items-end">
-                        <Text className="text-xs font-black text-emerald-700">Rs. {Number(it.totalRevenue || 0).toLocaleString("en-IN")}</Text>
-                        <Text className="text-[9px] text-gray-400">revenue</Text>
-                      </View>
-                    </View>
-                  ))}
-                </TouchableOpacity>
-              ))
-            )
-          ) : reportType === "sales" ? (
-            (salesData?.invoices || []).length === 0 ? (
-              <View className="py-8 items-center">
-                <Text className="text-xs text-gray-400">No invoices in this period</Text>
-              </View>
-            ) : (
-              (salesData?.invoices || []).slice(0, 30).map((inv) => (
-                <TouchableOpacity
-                  key={inv._id}
-                  activeOpacity={0.8}
-                  onPress={() => setSelectedInvoice(inv)}
-                  className="px-4 py-3 border-b border-gray-100 flex-row items-center justify-between active:bg-blue-50"
-                >
-                  <View className="flex-1 mr-2">
-                    <View className="flex-row items-center">
-                      <Text className="text-xs font-black text-gray-900">
-                        Bill #{inv.invoiceNumber}
-                      </Text>
-                      <Text className="text-[10px] text-gray-500 ml-2">
-                        {inv.createdAt || inv.invoiceDate
-                          ? new Date(inv.createdAt || inv.invoiceDate).toLocaleString("en-IN", {
-                              day: "2-digit",
-                              month: "short",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })
-                          : ""}
-                      </Text>
-                      <View className="bg-gray-100 px-1.5 py-0.5 rounded ml-2">
-                        <Text className="text-[9px] font-bold text-gray-600">
-                          {inv.paymentMode}
+                        <Text className="text-xs font-black text-emerald-700">
+                          Rs. {Number(it.totalRevenue || 0).toLocaleString("en-IN")}
                         </Text>
                       </View>
                     </View>
-                    <Text className="text-xs text-gray-700 mt-0.5 font-bold" numberOfLines={1}>
-                      {inv.partyName || "Cash Customer"}
-                    </Text>
-                    {inv.items && inv.items.length > 0 ? (
-                      <Text className="text-[11px] text-blue-900 font-semibold mt-1" numberOfLines={2}>
-                        🛍️ {inv.items.map((it) => `${it.name || it.itemName} (x${it.quantity || it.qty || 1})`).join(", ")}
-                      </Text>
-                    ) : null}
-                    <Text className="text-[10px] text-blue-500 font-bold mt-1">Tap to view full details →</Text>
-                  </View>
-                  <View className="items-end">
-                    <Text className="text-xs font-black text-gray-900">
-                      Rs. {Number(inv.grandTotal || 0).toLocaleString("en-IN")}
-                    </Text>
-                    <Text className="text-[10px] text-emerald-600 font-bold">
-                      {inv.paymentStatus || "PAID"}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              ))
-            )
-          ) : reportType === "inventory" ? (
-            inventoryItems.slice(0, 15).map((it) => (
-              <View
-                key={it._id}
-                className="px-4 py-3 border-b border-gray-100 flex-row items-center justify-between"
-              >
-                <View className="flex-1 mr-2">
-                  <Text className="text-xs font-black text-gray-900">{it.name}</Text>
-                  <Text className="text-[10px] text-gray-500 mt-0.5">
-                    Category: {it.category || "General"} | Unit: {it.unit || "PCS"}
-                  </Text>
-                </View>
-                <View className="items-end">
-                  <Text className="text-xs font-black text-gray-900">
-                    {it.stock || 0} in stock
-                  </Text>
-                  <Text
-                    className={`text-[9px] font-bold ${
-                      (it.stock || 0) <= (it.lowStockThreshold || 5)
-                        ? "text-red-600"
-                        : "text-emerald-600"
-                    }`}
-                  >
-                    {(it.stock || 0) <= (it.lowStockThreshold || 5) ? "LOW STOCK" : "IN STOCK"}
-                  </Text>
-                </View>
+                  ))
+                )}
               </View>
-            ))
-          ) : (
-            parties.slice(0, 15).map((p) => (
-              <View
-                key={p._id}
-                className="px-4 py-3 border-b border-gray-100 flex-row items-center justify-between"
-              >
-                <View className="flex-1 mr-2">
-                  <Text className="text-xs font-black text-gray-900">{p.name}</Text>
-                  <Text className="text-[10px] text-gray-500 mt-0.5">
-                    Phone: {p.phone || p.whatsappNumber || "--"} | Visits: {p.visitCount || 1}
+
+              {/* Recent Invoices List */}
+              <View className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden mb-6">
+                <View className="bg-slate-100 px-4 py-2.5 border-b border-slate-200 flex-row justify-between items-center">
+                  <Text className="text-xs font-black text-slate-700 uppercase tracking-wide">
+                    Recent Bills ({salesData?.invoices?.length || 0})
                   </Text>
+                  <Text className="text-[10px] text-slate-400 font-bold">Tap bill for details</Text>
                 </View>
-                <View className="items-end">
-                  <Text className="text-xs font-black text-gray-900">
-                    Spent: Rs. {Number(p.totalSpent || 0).toLocaleString("en-IN")}
-                  </Text>
-                  <Text
-                    className={`text-[10px] font-bold ${
-                      (p.balance || 0) > 0 ? "text-red-600" : "text-emerald-600"
-                    }`}
-                  >
-                    Udhar: Rs. {Number(p.balance || 0).toLocaleString("en-IN")}
-                  </Text>
-                </View>
+
+                {(salesData?.invoices || []).length === 0 ? (
+                  <View className="py-8 items-center">
+                    <Ionicons name="receipt-outline" size={32} color="#CBD5E1" />
+                    <Text className="text-xs text-slate-400 mt-2">No bills generated in this period</Text>
+                  </View>
+                ) : (
+                  (salesData?.invoices || []).slice(0, 10).map((inv) => (
+                    <TouchableOpacity
+                      key={inv._id}
+                      activeOpacity={0.8}
+                      onPress={() => setSelectedInvoice(inv)}
+                      className="px-4 py-2.5 border-b border-slate-100 flex-row items-center justify-between active:bg-blue-50/50"
+                    >
+                      <View className="flex-1 mr-2">
+                        <View className="flex-row items-center">
+                          <Text className="text-xs font-black text-slate-900">
+                            Bill #{inv.invoiceNumber}
+                          </Text>
+                          <View className="bg-slate-100 px-1.5 py-0.5 rounded ml-2">
+                            <Text className="text-[9px] font-bold text-slate-600">
+                              {inv.paymentMode}
+                            </Text>
+                          </View>
+                        </View>
+                        <Text className="text-xs text-slate-700 mt-0.5" numberOfLines={1}>
+                          {inv.partyName || "Walk-in Guest"}
+                        </Text>
+                      </View>
+                      <View className="items-end">
+                        <Text className="text-xs font-black text-slate-900">
+                          Rs. {Number(inv.grandTotal || 0).toLocaleString("en-IN")}
+                        </Text>
+                        <Text className="text-[9px] text-emerald-600 font-bold">
+                          {inv.paymentStatus || "PAID"}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))
+                )}
               </View>
-            ))
+            </View>
           )}
-        </View>
+
+          {/* ═══════════════════════════════════════════════════════════════ */}
+          {/* TAB 2: ALL REPORTS (55+) DIRECTORY (CLEAN ACCORDION CATALOG)  */}
+          {/* ═══════════════════════════════════════════════════════════════ */}
+          {activeTab === "hub" && (
+            <View>
+              {/* Clean Search Input & Period Bar */}
+              <View className="bg-white p-3 rounded-2xl border border-slate-200 shadow-xs mb-3">
+                <View className="flex-row items-center bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 mb-2.5">
+                  <Ionicons name="search" size={17} color="#64748B" />
+                  <TextInput
+                    className="flex-1 text-xs text-slate-900 ml-2 font-medium"
+                    placeholder="Search any report (e.g., GST, Daily, P&L, Waiter, Stock)..."
+                    value={hubSearch}
+                    onChangeText={setHubSearch}
+                    placeholderTextColor="#94A3B8"
+                  />
+                  {hubSearch ? (
+                    <TouchableOpacity onPress={() => setHubSearch("")} className="p-1">
+                      <Ionicons name="close-circle" size={16} color="#94A3B8" />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+
+                {/* Period Selector Pills */}
+                <View className="flex-row gap-1">
+                  {[
+                    { id: "today", label: "Today" },
+                    { id: "yesterday", label: "Yesterday" },
+                    { id: "week", label: "7 Days" },
+                    { id: "month", label: "This Month" },
+                    { id: "365", label: "Yearly" },
+                  ].map((p) => {
+                    const isSelected = hubPeriod === p.id;
+                    return (
+                      <TouchableOpacity
+                        key={p.id}
+                        onPress={() => setHubPeriod(p.id)}
+                        className={`flex-1 py-1.5 rounded-lg items-center justify-center ${
+                          isSelected ? "bg-slate-900" : "bg-slate-100"
+                        }`}
+                      >
+                        <Text
+                          className={`text-[11px] font-bold ${
+                            isSelected ? "text-white" : "text-slate-600"
+                          }`}
+                        >
+                          {p.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* ── If User is Searching: Show Flat Compact Results List ── */}
+              {isSearching ? (
+                <View className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden mb-6 p-3">
+                  <Text className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                    Search Results ({searchResults.length})
+                  </Text>
+                  {searchResults.length === 0 ? (
+                    <View className="py-8 items-center">
+                      <Ionicons name="search-outline" size={32} color="#CBD5E1" />
+                      <Text className="text-xs text-slate-400 mt-2">No reports matching "{hubSearch}"</Text>
+                    </View>
+                  ) : (
+                    searchResults.map((report) => (
+                      <View
+                        key={report.id}
+                        className="py-2.5 border-b border-slate-100 last:border-b-0 flex-row items-center justify-between"
+                      >
+                        <View className="flex-1 mr-2">
+                          <Text className="text-xs font-black text-slate-900" numberOfLines={1}>
+                            {report.title}
+                          </Text>
+                          <Text className="text-[10px] text-slate-500 mt-0.5" numberOfLines={1}>
+                            {report.description}
+                          </Text>
+                        </View>
+                        <View className="flex-row gap-1.5">
+                          <TouchableOpacity
+                            onPress={() => handleOpenReportViewer(report)}
+                            className="bg-blue-600 px-2.5 py-1.5 rounded-lg flex-row items-center"
+                          >
+                            <Ionicons name="eye-outline" size={13} color="#FFFFFF" />
+                            <Text className="text-white text-[10px] font-bold ml-1">View</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => handleDownloadHubReport(report, "pdf")}
+                            className="bg-slate-100 px-2 py-1.5 rounded-lg border border-slate-200 items-center justify-center"
+                          >
+                            <Ionicons name="document-text-outline" size={13} color="#DC2626" />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => handleDownloadHubReport(report, "csv")}
+                            className="bg-slate-100 px-2 py-1.5 rounded-lg border border-slate-200 items-center justify-center"
+                          >
+                            <Ionicons name="download-outline" size={13} color="#059669" />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ))
+                  )}
+                </View>
+              ) : (
+                /* ── If Not Searching: Show Clean Featured + 7 Category Accordions ── */
+                <View>
+                  {/* Featured / Most Used Quick Access */}
+                  <View className="bg-white rounded-2xl border border-slate-200 shadow-xs p-3.5 mb-3.5">
+                    <View className="flex-row items-center justify-between mb-2">
+                      <View className="flex-row items-center">
+                        <Ionicons name="star" size={15} color="#EAB308" />
+                        <Text className="text-xs font-black text-slate-900 ml-1.5 uppercase tracking-wider">
+                          Frequently Used Reports
+                        </Text>
+                      </View>
+                      <Text className="text-[10px] text-blue-600 font-bold">Quick Access</Text>
+                    </View>
+
+                    {popularReports.map((report) => (
+                      <View
+                        key={report.id}
+                        className="py-2 border-b border-slate-100 last:border-b-0 flex-row items-center justify-between"
+                      >
+                        <View className="flex-1 mr-2">
+                          <Text className="text-xs font-bold text-slate-900" numberOfLines={1}>
+                            {report.title}
+                          </Text>
+                          <Text className="text-[10px] text-slate-400" numberOfLines={1}>
+                            {report.description}
+                          </Text>
+                        </View>
+                        <View className="flex-row gap-1">
+                          <TouchableOpacity
+                            onPress={() => handleOpenReportViewer(report)}
+                            className="bg-blue-600 px-2.5 py-1.5 rounded-lg flex-row items-center"
+                          >
+                            <Ionicons name="eye-outline" size={12} color="#FFFFFF" />
+                            <Text className="text-white text-[10px] font-bold ml-1">Run</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => handleDownloadHubReport(report, "pdf")}
+                            className="bg-slate-50 px-2 py-1.5 rounded-lg border border-slate-200 items-center justify-center"
+                          >
+                            <Ionicons name="document-text-outline" size={13} color="#DC2626" />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => handleDownloadHubReport(report, "csv")}
+                            className="bg-slate-50 px-2 py-1.5 rounded-lg border border-slate-200 items-center justify-center"
+                          >
+                            <Ionicons name="download-outline" size={13} color="#059669" />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+
+                  {/* 7 Clean Categorized Accordions (Zero clutter!) */}
+                  <Text className="text-xs font-extrabold text-slate-500 uppercase tracking-wider mb-2 ml-1">
+                    Report Folders by Category (55 Reports)
+                  </Text>
+
+                  {REPORT_CATEGORIES.filter((c) => c.id !== "all").map((category) => {
+                    const isExpanded = expandedCategory === category.id;
+                    const catReports = REPORTS_CATALOG.filter((r) => r.category === category.id);
+
+                    return (
+                      <View
+                        key={category.id}
+                        className="bg-white rounded-2xl border border-slate-200 shadow-xs mb-2.5 overflow-hidden"
+                      >
+                        {/* Category Header Row (Tap to expand/collapse) */}
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          onPress={() => setExpandedCategory(isExpanded ? null : category.id)}
+                          className={`flex-row items-center justify-between p-3.5 ${
+                            isExpanded ? "bg-slate-50 border-b border-slate-200" : "bg-white"
+                          }`}
+                        >
+                          <View className="flex-row items-center flex-1">
+                            <View className="w-8 h-8 rounded-xl bg-blue-50 items-center justify-center mr-2.5 border border-blue-100">
+                              <Ionicons name={category.icon || "folder"} size={16} color="#2563EB" />
+                            </View>
+                            <View className="flex-1">
+                              <Text className="text-xs font-black text-slate-900">
+                                {category.label}
+                              </Text>
+                              <Text className="text-[10px] text-slate-500">
+                                {catReports.length} Specialized Reports
+                              </Text>
+                            </View>
+                          </View>
+                          <View className="flex-row items-center">
+                            <View className="bg-slate-200/80 px-2 py-0.5 rounded-full mr-2">
+                              <Text className="text-[10px] font-extrabold text-slate-700">
+                                {catReports.length}
+                              </Text>
+                            </View>
+                            <Ionicons
+                              name={isExpanded ? "chevron-up" : "chevron-down"}
+                              size={18}
+                              color="#64748B"
+                            />
+                          </View>
+                        </TouchableOpacity>
+
+                        {/* Expanded Reports List */}
+                        {isExpanded && (
+                          <View className="p-3">
+                            {catReports.map((report) => (
+                              <View
+                                key={report.id}
+                                className="py-2.5 border-b border-slate-100 last:border-b-0 flex-row items-center justify-between"
+                              >
+                                <View className="flex-1 mr-2">
+                                  <Text className="text-xs font-bold text-slate-900" numberOfLines={1}>
+                                    {report.title}
+                                  </Text>
+                                  <Text className="text-[10px] text-slate-500 mt-0.5" numberOfLines={1}>
+                                    {report.description}
+                                  </Text>
+                                </View>
+
+                                <View className="flex-row gap-1.5">
+                                  <TouchableOpacity
+                                    onPress={() => handleOpenReportViewer(report)}
+                                    className="bg-blue-600 px-2.5 py-1.5 rounded-lg flex-row items-center shadow-xs"
+                                  >
+                                    <Ionicons name="eye-outline" size={13} color="#FFFFFF" />
+                                    <Text className="text-white text-[10px] font-bold ml-1">Run</Text>
+                                  </TouchableOpacity>
+
+                                  <TouchableOpacity
+                                    onPress={() => handleDownloadHubReport(report, "pdf")}
+                                    className="bg-slate-50 px-2 py-1.5 rounded-lg border border-slate-200 items-center justify-center"
+                                  >
+                                    <Ionicons name="document-text-outline" size={13} color="#DC2626" />
+                                  </TouchableOpacity>
+
+                                  <TouchableOpacity
+                                    onPress={() => handleDownloadHubReport(report, "csv")}
+                                    className="bg-slate-50 px-2 py-1.5 rounded-lg border border-slate-200 items-center justify-center"
+                                  >
+                                    <Ionicons name="download-outline" size={13} color="#059669" />
+                                  </TouchableOpacity>
+                                </View>
+                              </View>
+                            ))}
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
+          )}
         </ResponsiveContainer>
       </ScrollView>
 
-      {/* Bill Detail Modal in Reports */}
+      {/* ── Modal 1: Bill Detail Modal ── */}
       <Modal visible={!!selectedInvoice} animationType="slide" transparent={true} onRequestClose={() => setSelectedInvoice(null)}>
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: isWide ? "center" : "flex-end", alignItems: isWide ? "center" : "stretch", padding: isWide ? 24 : 0 }}>
           <View style={{ backgroundColor: "#FFFFFF", borderTopLeftRadius: 24, borderTopRightRadius: 24, borderBottomLeftRadius: isWide ? 24 : 0, borderBottomRightRadius: isWide ? 24 : 0, maxHeight: "88%", width: "100%", maxWidth: isWide ? 560 : undefined }}>
-            {/* Header */}
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 18, borderBottomWidth: 1, borderBottomColor: "#F3F4F6" }}>
               <View>
                 <Text style={{ fontSize: 16, fontWeight: "900", color: "#111827" }}>Bill #{selectedInvoice?.invoiceNumber}</Text>
@@ -1006,7 +835,6 @@ export default function ReportsScreen({ isActive = true, onOpenDrawer, onBack })
             </View>
 
             <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
-              {/* Customer Info */}
               {selectedInvoice?.partyName ? (
                 <View style={{ backgroundColor: "#EFF6FF", borderRadius: 12, padding: 12, marginBottom: 12, flexDirection: "row", alignItems: "center" }}>
                   <Ionicons name="person-circle-outline" size={20} color="#2563EB" />
@@ -1017,63 +845,37 @@ export default function ReportsScreen({ isActive = true, onOpenDrawer, onBack })
                 </View>
               ) : null}
 
-              {/* Items Table */}
               <View style={{ backgroundColor: "#F9FAFB", borderRadius: 12, overflow: "hidden", marginBottom: 12, borderWidth: 1, borderColor: "#E5E7EB" }}>
                 <View style={{ flexDirection: "row", backgroundColor: "#2563EB", paddingHorizontal: 12, paddingVertical: 8 }}>
                   <Text style={{ flex: 3, color: "#FFFFFF", fontSize: 11, fontWeight: "800" }}>Item</Text>
                   <Text style={{ flex: 1, color: "#FFFFFF", fontSize: 11, fontWeight: "800", textAlign: "center" }}>Qty</Text>
                   <Text style={{ flex: 1.5, color: "#FFFFFF", fontSize: 11, fontWeight: "800", textAlign: "right" }}>Amount</Text>
                 </View>
-                {(selectedInvoice?.items || []).length === 0 ? (
-                  <View style={{ padding: 14, alignItems: "center" }}>
-                    <Text style={{ color: "#9CA3AF", fontSize: 12 }}>No items recorded for this bill.</Text>
-                  </View>
-                ) : (
-                  (selectedInvoice?.items || []).map((it, idx) => {
-                    const price = Number(it.sellingPrice || it.price || it.rate || 0);
-                    const qty = Number(it.quantity || it.qty || 1);
-                    const total = Number(it.total || it.amount || (price * qty) || 0);
-                    return (
-                      <View key={idx} style={{ flexDirection: "row", paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#F3F4F6", backgroundColor: idx % 2 === 0 ? "#FFFFFF" : "#F9FAFB", alignItems: "center" }}>
-                        <View style={{ flex: 3, paddingRight: 4 }}>
-                          <Text style={{ fontSize: 12, color: "#111827", fontWeight: "700" }} numberOfLines={2}>
-                            {it.name || it.itemName || "Item"}
+                {(selectedInvoice?.items || []).map((it, idx) => {
+                  const price = Number(it.sellingPrice || it.price || it.rate || 0);
+                  const qty = Number(it.quantity || it.qty || 1);
+                  const total = Number(it.total || it.amount || (price * qty) || 0);
+                  return (
+                    <View key={idx} style={{ flexDirection: "row", paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#F3F4F6", backgroundColor: idx % 2 === 0 ? "#FFFFFF" : "#F9FAFB", alignItems: "center" }}>
+                      <View style={{ flex: 3, paddingRight: 4 }}>
+                        <Text style={{ fontSize: 12, color: "#111827", fontWeight: "700" }} numberOfLines={2}>
+                          {it.name || it.itemName || "Item"}
+                        </Text>
+                        {price > 0 ? (
+                          <Text style={{ fontSize: 10, color: "#6B7280", marginTop: 1 }}>
+                            Rs. {price} / {it.unit || "unit"}
                           </Text>
-                          {price > 0 ? (
-                            <Text style={{ fontSize: 10, color: "#6B7280", marginTop: 1 }}>
-                              Rs. {price} / {it.unit || "unit"}
-                            </Text>
-                          ) : null}
-                        </View>
-                        <Text style={{ flex: 1, fontSize: 12, color: "#374151", fontWeight: "600", textAlign: "center" }}>{qty}</Text>
-                        <Text style={{ flex: 1.5, fontSize: 12, color: "#111827", fontWeight: "800", textAlign: "right" }}>Rs. {total.toLocaleString("en-IN")}</Text>
+                        ) : null}
                       </View>
-                    );
-                  })
-                )}
+                      <Text style={{ flex: 1, fontSize: 12, color: "#374151", fontWeight: "600", textAlign: "center" }}>{qty}</Text>
+                      <Text style={{ flex: 1.5, fontSize: 12, color: "#111827", fontWeight: "800", textAlign: "right" }}>Rs. {total.toLocaleString("en-IN")}</Text>
+                    </View>
+                  );
+                })}
               </View>
 
-              {/* Totals */}
               <View style={{ backgroundColor: "#F9FAFB", borderRadius: 12, padding: 14, borderWidth: 1, borderColor: "#E5E7EB", marginBottom: 16 }}>
-                {selectedInvoice?.subtotal ? (
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-                    <Text style={{ color: "#6B7280", fontSize: 12 }}>Subtotal</Text>
-                    <Text style={{ color: "#374151", fontWeight: "600", fontSize: 12 }}>Rs. {Number(selectedInvoice.subtotal || 0).toLocaleString("en-IN")}</Text>
-                  </View>
-                ) : null}
-                {selectedInvoice?.discountTotal > 0 ? (
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-                    <Text style={{ color: "#059669", fontSize: 12 }}>Discount</Text>
-                    <Text style={{ color: "#059669", fontWeight: "600", fontSize: 12 }}>- Rs. {Number(selectedInvoice.discountTotal || 0).toLocaleString("en-IN")}</Text>
-                  </View>
-                ) : null}
-                {selectedInvoice?.freebieItemGiven ? (
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-                    <Text style={{ color: "#2563EB", fontSize: 12 }}>Gift / Freebie</Text>
-                    <Text style={{ color: "#2563EB", fontWeight: "600", fontSize: 12 }}>{selectedInvoice.freebieItemGiven}</Text>
-                  </View>
-                ) : null}
-                <View style={{ flexDirection: "row", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: "#E5E7EB", paddingTop: 10, marginTop: 4 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: "#E5E7EB", paddingTop: 10 }}>
                   <Text style={{ color: "#111827", fontSize: 15, fontWeight: "900" }}>Total</Text>
                   <Text style={{ color: "#2563EB", fontSize: 15, fontWeight: "900" }}>Rs. {Number(selectedInvoice?.grandTotal || 0).toLocaleString("en-IN")}</Text>
                 </View>
@@ -1083,7 +885,6 @@ export default function ReportsScreen({ isActive = true, onOpenDrawer, onBack })
                 </View>
               </View>
 
-              {/* Share Button */}
               <TouchableOpacity
                 onPress={async () => {
                   if (selectedInvoice) await shareBackendPdf(selectedInvoice, `Invoice_${selectedInvoice.invoiceNumber || selectedInvoice._id}.pdf`);
@@ -1098,7 +899,7 @@ export default function ReportsScreen({ isActive = true, onOpenDrawer, onBack })
         </View>
       </Modal>
 
-      {/* Category-Wise Selling Per Day (Whole Year) Modal */}
+      {/* ── Modal 2: Category Sales Per Day Modal ── */}
       <Modal
         visible={showCategoryModal}
         animationType="slide"
@@ -1107,7 +908,6 @@ export default function ReportsScreen({ isActive = true, onOpenDrawer, onBack })
       >
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: isWide ? "center" : "flex-end", alignItems: isWide ? "center" : "stretch", padding: isWide ? 24 : 0 }}>
           <View style={{ backgroundColor: "#FFFFFF", borderTopLeftRadius: 24, borderTopRightRadius: 24, borderBottomLeftRadius: isWide ? 24 : 0, borderBottomRightRadius: isWide ? 24 : 0, maxHeight: "90%", flex: 1, width: "100%", maxWidth: isWide ? 680 : undefined }}>
-            {/* Header */}
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 18, borderBottomWidth: 1, borderBottomColor: "#F3F4F6", backgroundColor: "#2563EB", borderTopLeftRadius: 24, borderTopRightRadius: 24 }}>
               <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: "row", alignItems: "center" }}>
@@ -1131,202 +931,51 @@ export default function ReportsScreen({ isActive = true, onOpenDrawer, onBack })
                 <Text style={{ fontSize: 13, fontWeight: "bold", color: "#2563EB", marginTop: 14 }}>
                   Analyzing category sales for the whole year...
                 </Text>
-                <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 4 }}>
-                  Grouping transactions by date & category
-                </Text>
-              </View>
-            ) : !categorySalesData || ((categorySalesData.dailyCategorySales || categorySalesData.data || categorySalesData.daily || []).length === 0) ? (
-              <View style={{ padding: 40, alignItems: "center", justifyContent: "center", flex: 1 }}>
-                <Ionicons name="alert-circle-outline" size={48} color="#D1D5DB" />
-                <Text style={{ fontSize: 14, fontWeight: "bold", color: "#6B7280", marginTop: 12 }}>
-                  No Category Sales Recorded
-                </Text>
-                <Text style={{ fontSize: 12, color: "#9CA3AF", marginTop: 4, textAlign: "center" }}>
-                  Invoices created with category items will appear here organized day-by-day.
-                </Text>
               </View>
             ) : (
               <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
-                {/* Yearly Summary Cards */}
                 <View style={{ flexDirection: "row", gap: 10, marginBottom: 14 }}>
                   <View style={{ flex: 1, backgroundColor: "#EEF2FF", borderRadius: 14, padding: 12, borderWidth: 1, borderColor: "#C7D2FE" }}>
                     <Text style={{ fontSize: 10, fontWeight: "800", color: "#4338CA", textTransform: "uppercase" }}>Categories</Text>
                     <Text style={{ fontSize: 20, fontWeight: "900", color: "#312E81", marginTop: 2 }}>
-                      {(categorySalesData.yearlyCategorySummary || categorySalesData.yearly || []).length}
+                      {(categorySalesData?.yearlyCategorySummary || categorySalesData?.yearly || []).length}
                     </Text>
-                    <Text style={{ fontSize: 10, color: "#6366F1", marginTop: 2 }}>Tracked across year</Text>
                   </View>
                   <View style={{ flex: 1.3, backgroundColor: "#ECFDF5", borderRadius: 14, padding: 12, borderWidth: 1, borderColor: "#A7F3D0" }}>
                     <Text style={{ fontSize: 10, fontWeight: "800", color: "#065F46", textTransform: "uppercase" }}>Yearly Category Sales</Text>
                     <Text style={{ fontSize: 20, fontWeight: "900", color: "#064E3B", marginTop: 2 }}>
-                      Rs. {(categorySalesData.yearlyCategorySummary || categorySalesData.yearly || []).reduce((acc, c) => acc + (c.totalRevenue || 0), 0).toLocaleString("en-IN")}
-                    </Text>
-                    <Text style={{ fontSize: 10, color: "#059669", marginTop: 2 }}>
-                      {(categorySalesData.yearlyCategorySummary || categorySalesData.yearly || []).reduce((acc, c) => acc + (c.totalQty || 0), 0)} items sold
+                      Rs. {(categorySalesData?.yearlyCategorySummary || categorySalesData?.yearly || []).reduce((acc, c) => acc + (c.totalRevenue || 0), 0).toLocaleString("en-IN")}
                     </Text>
                   </View>
                 </View>
 
-                {/* Category Pills Filter */}
-                <Text style={{ fontSize: 11, fontWeight: "800", color: "#6B7280", textTransform: "uppercase", marginBottom: 8, letterSpacing: 0.5 }}>
-                  Filter by Category:
-                </Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-                  {["All", ...((categorySalesData.yearlyCategorySummary || categorySalesData.yearly || []).map((c) => c.category))].map((cat) => (
-                    <TouchableOpacity
-                      key={cat}
-                      onPress={() => setSelectedCategoryFilter(cat)}
-                      style={{
-                        paddingHorizontal: 12,
-                        paddingVertical: 6,
-                        borderRadius: 20,
-                        marginRight: 8,
-                        backgroundColor: selectedCategoryFilter === cat ? "#4F46E5" : "#F3F4F6",
-                        borderWidth: 1,
-                        borderColor: selectedCategoryFilter === cat ? "#4F46E5" : "#E5E7EB",
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontSize: 11,
-                          fontWeight: "800",
-                          color: selectedCategoryFilter === cat ? "#FFFFFF" : "#374151",
-                        }}
-                      >
-                        {cat}
+                {(categorySalesData?.dailyCategorySales || categorySalesData?.data || categorySalesData?.daily || []).slice(0, 15).map((day, dIdx) => (
+                  <View key={dIdx} style={{ backgroundColor: "#FFFFFF", borderRadius: 16, borderWidth: 1, borderColor: "#E5E7EB", marginBottom: 12, overflow: "hidden" }}>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: "#F8FAFC", paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "#E2E8F0" }}>
+                      <Text style={{ fontSize: 12, fontWeight: "800", color: "#1E293B" }}>
+                        {new Date(day.date).toLocaleDateString("en-IN", { weekday: "short", day: "2-digit", month: "short", year: "numeric" })}
                       </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-
-                {/* Day-by-Day Timeline List */}
-                <Text style={{ fontSize: 11, fontWeight: "800", color: "#6B7280", textTransform: "uppercase", marginBottom: 10, letterSpacing: 0.5 }}>
-                  Daily Timeline (Whole Year):
-                </Text>
-
-                {(categorySalesData.dailyCategorySales || categorySalesData.data || categorySalesData.daily || [])
-                  .filter((day) => {
-                    if (selectedCategoryFilter === "All") return true;
-                    return (day.categories || []).some((c) => c.category === selectedCategoryFilter);
-                  })
-                  .map((day, dIdx) => {
-                    const dayCategories = selectedCategoryFilter === "All"
-                      ? day.categories || []
-                      : (day.categories || []).filter((c) => c.category === selectedCategoryFilter);
-                    const dayRev = dayCategories.reduce((acc, c) => acc + (c.totalRevenue || 0), 0);
-                    const dayQty = dayCategories.reduce((acc, c) => acc + (c.totalQty || 0), 0);
-
-                    return (
-                      <View
-                        key={dIdx}
-                        style={{
-                          backgroundColor: "#FFFFFF",
-                          borderRadius: 16,
-                          borderWidth: 1,
-                          borderColor: "#E5E7EB",
-                          marginBottom: 14,
-                          overflow: "hidden",
-                          shadowColor: "#000",
-                          shadowOffset: { width: 0, height: 1 },
-                          shadowOpacity: 0.05,
-                          shadowRadius: 2,
-                          elevation: 1,
-                        }}
-                      >
-                        {/* Day Header Banner */}
-                        <View
-                          style={{
-                            flexDirection: "row",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            backgroundColor: "#F8FAFC",
-                            paddingHorizontal: 14,
-                            paddingVertical: 10,
-                            borderBottomWidth: 1,
-                            borderBottomColor: "#E2E8F0",
-                          }}
-                        >
-                          <View style={{ flexDirection: "row", alignItems: "center" }}>
-                            <Ionicons name="calendar" size={15} color="#4F46E5" />
-                            <Text style={{ fontSize: 13, fontWeight: "900", color: "#1E293B", marginLeft: 6 }}>
-                              {new Date(day.date).toLocaleDateString("en-IN", {
-                                weekday: "short",
-                                day: "2-digit",
-                                month: "short",
-                                year: "numeric",
-                              })}
-                            </Text>
-                          </View>
-                          <View style={{ alignItems: "flex-end" }}>
-                            <Text style={{ fontSize: 13, fontWeight: "900", color: "#059669" }}>
-                              Rs. {dayRev.toLocaleString("en-IN")}
-                            </Text>
-                            <Text style={{ fontSize: 10, color: "#64748B" }}>
-                              {dayQty} item{dayQty > 1 ? "s" : ""} sold
-                            </Text>
-                          </View>
+                      <Text style={{ fontSize: 12, fontWeight: "800", color: "#059669" }}>
+                        Rs. {(day.categories || []).reduce((acc, c) => acc + (c.totalRevenue || 0), 0).toLocaleString("en-IN")}
+                      </Text>
+                    </View>
+                    <View style={{ padding: 10 }}>
+                      {(day.categories || []).map((cat, cIdx) => (
+                        <View key={cIdx} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 }}>
+                          <Text style={{ fontSize: 11, color: "#4B5563" }}>🏷️ {cat.category}</Text>
+                          <Text style={{ fontSize: 11, fontWeight: "700", color: "#111827" }}>Rs. {Number(cat.totalRevenue || 0).toLocaleString("en-IN")}</Text>
                         </View>
-
-                        {/* Categories Sold On This Day */}
-                        <View style={{ padding: 12 }}>
-                          {dayCategories.map((cat, cIdx) => (
-                            <View
-                              key={cIdx}
-                              style={{
-                                backgroundColor: "#F9FAFB",
-                                borderRadius: 12,
-                                padding: 10,
-                                marginBottom: cIdx === dayCategories.length - 1 ? 0 : 8,
-                                borderWidth: 1,
-                                borderColor: "#F3F4F6",
-                              }}
-                            >
-                              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                                <View style={{ flexDirection: "row", alignItems: "center" }}>
-                                  <View style={{ backgroundColor: "#EEF2FF", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, marginRight: 6 }}>
-                                    <Text style={{ fontSize: 11, fontWeight: "800", color: "#4338CA" }}>
-                                      🏷️ {cat.category}
-                                    </Text>
-                                  </View>
-                                </View>
-                                <Text style={{ fontSize: 12, fontWeight: "900", color: "#111827" }}>
-                                  Rs. {Number(cat.totalRevenue || 0).toLocaleString("en-IN")}
-                                </Text>
-                              </View>
-
-                              {/* Items under this category */}
-                              {(cat.items || []).map((it, itIdx) => (
-                                <View
-                                  key={itIdx}
-                                  style={{
-                                    flexDirection: "row",
-                                    justifyContent: "space-between",
-                                    alignItems: "center",
-                                    paddingVertical: 2,
-                                    paddingLeft: 6,
-                                  }}
-                                >
-                                  <Text style={{ fontSize: 11, color: "#4B5563", flex: 1 }} numberOfLines={1}>
-                                    • {it.name || "Item"} <Text style={{ color: "#6B7280" }}>(x{it.quantity || it.qty || 1})</Text>
-                                  </Text>
-                                  <Text style={{ fontSize: 11, fontWeight: "700", color: "#374151" }}>
-                                    Rs. {Number(it.revenue || it.total || 0).toLocaleString("en-IN")}
-                                  </Text>
-                                </View>
-                              ))}
-                            </View>
-                          ))}
-                        </View>
-                      </View>
-                    );
-                  })}
+                      ))}
+                    </View>
+                  </View>
+                ))}
               </ScrollView>
             )}
           </View>
         </View>
       </Modal>
 
-      {/* ────────────────── 55+ REPORT VIEWER MODAL ────────────────── */}
+      {/* ── Modal 3: Report Results Runner Modal ── */}
       <Modal
         visible={Boolean(activeReportModal)}
         transparent
@@ -1335,7 +984,6 @@ export default function ReportsScreen({ isActive = true, onOpenDrawer, onBack })
       >
         <View className="flex-1 bg-black/60 justify-center items-center px-3 py-6">
           <View style={{ width: "100%", maxWidth: 840, maxHeight: "90%" }} className="bg-white rounded-3xl p-5 shadow-2xl flex-1">
-            {/* Header */}
             <View className="flex-row items-center justify-between pb-3 border-b border-gray-200">
               <View className="flex-row items-center flex-1 mr-2">
                 <View style={{ backgroundColor: "#EFF6FF" }} className="w-9 h-9 rounded-xl items-center justify-center mr-2.5">
@@ -1362,7 +1010,6 @@ export default function ReportsScreen({ isActive = true, onOpenDrawer, onBack })
               </View>
             ) : reportResultData ? (
               <ScrollView className="flex-1 pt-3" showsVerticalScrollIndicator={false}>
-                {/* Summary KPI Cards */}
                 {reportResultData.summary && reportResultData.summary.length > 0 && (
                   <View className="flex-row flex-wrap gap-2 mb-4">
                     {reportResultData.summary.map((kpi, idx) => (
@@ -1389,9 +1036,7 @@ export default function ReportsScreen({ isActive = true, onOpenDrawer, onBack })
                   </View>
                 )}
 
-                {/* Table View */}
                 <View className="border border-gray-200 rounded-2xl overflow-hidden mb-4 bg-white shadow-xs">
-                  {/* Table Header */}
                   <View className="bg-slate-900 flex-row px-3 py-2.5">
                     {reportResultData.columns.map((col) => (
                       <Text
@@ -1410,7 +1055,6 @@ export default function ReportsScreen({ isActive = true, onOpenDrawer, onBack })
                     ))}
                   </View>
 
-                  {/* Rows */}
                   {reportResultData.rows.length === 0 ? (
                     <View className="py-8 items-center justify-center">
                       <Ionicons name="file-tray-outline" size={28} color="#94A3B8" />
@@ -1451,7 +1095,6 @@ export default function ReportsScreen({ isActive = true, onOpenDrawer, onBack })
               </ScrollView>
             ) : null}
 
-            {/* Modal Footer with Instant PDF / CSV Download Buttons */}
             <View className="pt-3 border-t border-gray-200 flex-row gap-3">
               <TouchableOpacity
                 onPress={() => handleDownloadHubReport(activeReportModal, "pdf")}
@@ -1459,7 +1102,7 @@ export default function ReportsScreen({ isActive = true, onOpenDrawer, onBack })
                 className="flex-1 bg-red-600 py-3 rounded-xl flex-row items-center justify-center shadow-xs"
               >
                 <Ionicons name="document-text" size={16} color="#FFFFFF" />
-                <Text className="text-white text-xs font-black ml-2">Download PDF Report</Text>
+                <Text className="text-white text-xs font-black ml-2">Download PDF</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -1468,7 +1111,7 @@ export default function ReportsScreen({ isActive = true, onOpenDrawer, onBack })
                 className="flex-1 bg-emerald-600 py-3 rounded-xl flex-row items-center justify-center shadow-xs"
               >
                 <Ionicons name="download" size={16} color="#FFFFFF" />
-                <Text className="text-white text-xs font-black ml-2">Download Excel / CSV</Text>
+                <Text className="text-white text-xs font-black ml-2">Download CSV</Text>
               </TouchableOpacity>
             </View>
           </View>

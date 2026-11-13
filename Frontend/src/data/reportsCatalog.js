@@ -409,3 +409,4 @@ export const REPORTS_CATALOG = [
     icon: "medal-outline",
   },
 ];
+

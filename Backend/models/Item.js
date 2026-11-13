@@ -59,6 +59,51 @@ const itemSchema = new mongoose.Schema(
     imageUrl: {
       type: String,
     },
+    itemType: {
+      type: String,
+      enum: ["FINISHED_GOOD", "RAW_MATERIAL", "SEMI_FINISHED"],
+      default: "FINISHED_GOOD",
+      index: true,
+    },
+    isDineInAvailable: {
+      type: Boolean,
+      default: true,
+    },
+    isOnlineAvailable: {
+      type: Boolean,
+      default: true,
+    },
+    recipe: [
+      {
+        rawMaterialId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Item",
+          required: true,
+        },
+        rawMaterialName: {
+          type: String,
+          required: true,
+        },
+        quantity: {
+          type: Number,
+          required: true,
+          min: 0,
+        },
+        unit: {
+          type: String,
+          default: "GM",
+        },
+        stage: {
+          type: String,
+          enum: ["PREP", "COOKING", "GARNISH", "PACKAGING"],
+          default: "COOKING",
+        },
+      },
+    ],
+    autoDeductRecipeStock: {
+      type: Boolean,
+      default: true,
+    },
   },
   { timestamps: true }
 );

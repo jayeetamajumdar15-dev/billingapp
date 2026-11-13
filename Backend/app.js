@@ -19,6 +19,7 @@ import whatsappRoutes from "./routes/whatsappRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import reportRoutes from "./routes/reportRoutes.js";
 import tableRoutes from "./routes/tableRoutes.js";
+import inventoryRoutes from "./routes/inventoryRoutes.js";
 import { initAllWhatsAppSessions } from "./services/whatsappService.js";
 import { startQueueWorker } from "./services/jobQueueService.js";
 import { getAwsMessagingStatus } from "./services/awsMessagingService.js";
@@ -121,6 +122,7 @@ app.use("/api/whatsapp", whatsappRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/tables", tableRoutes);
+app.use("/api/inventory", inventoryRoutes);
 
 app.use((err, req, res, next) => {
   console.error("Server Error:", err.stack || err.message);

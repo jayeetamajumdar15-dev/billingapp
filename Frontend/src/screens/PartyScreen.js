@@ -45,6 +45,17 @@ export default function PartyScreen({ user, isActive = true, onProfileUpdated, o
   const [formFreebie, setFormFreebie] = useState("");
   const [savingPerks, setSavingPerks] = useState(false);
 
+  // Dedicated All-VIP Offer Maintenance Modal state
+  const [vipOfferModalVisible, setVipOfferModalVisible] = useState(false);
+  const [vipOfferThreshold, setVipOfferThreshold] = useState(String(user?.vipVisitThreshold || 3));
+  const [vipOfferEnabled, setVipOfferEnabled] = useState(true);
+  const [vipOfferDiscount, setVipOfferDiscount] = useState(String(user?.vipOffer?.discountPercent || 10));
+  const [vipOfferFreebie, setVipOfferFreebie] = useState(user?.vipOffer?.freebieItem || "");
+  const [vipOfferMinBill, setVipOfferMinBill] = useState(String(user?.vipOffer?.minBillAmount || 0));
+  const [vipOfferMessage, setVipOfferMessage] = useState(user?.vipOffer?.customMessage || "Special VIP Diner Offer! Thank you for visiting us.");
+  const [savingVipOffer, setSavingVipOffer] = useState(false);
+  const [vipQualifyingCount, setVipQualifyingCount] = useState(0);
+
   // Edit / Add Party Modal state
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editingParty, setEditingParty] = useState(null);
@@ -262,6 +273,67 @@ export default function PartyScreen({ user, isActive = true, onProfileUpdated, o
       setSavingPerks(false);
     }
   };
+  const loadVipOfferConfig = async () => {
+    try {
+      const res = await api.parties.getVipOffer();
+      if (res?.success) {
+        if (res.vipVisitThreshold) {
+          setVipVisitThreshold(res.vipVisitThreshold);
+          setVipOfferThreshold(String(res.vipVisitThreshold));
+        }
+        if (res.vipOffer) {
+          setVipOfferEnabled(res.vipOffer.enabled !== false);
+          setVipOfferDiscount(String(res.vipOffer.discountPercent || 10));
+          setVipOfferFreebie(res.vipOffer.freebieItem || "");
+          setVipOfferMinBill(String(res.vipOffer.minBillAmount || 0));
+          setVipOfferMessage(res.vipOffer.customMessage || "Special VIP Diner Offer!");
+        }
+        if (res.qualifyingCount !== undefined) {
+          setVipQualifyingCount(res.qualifyingCount);
+        }
+      }
+    } catch (e) {
+      console.warn("loadVipOfferConfig error:", e.message);
+    }
+  };
+
+  const handleSaveUniversalVipOffer = async () => {
+    const thresholdNum = parseInt(vipOfferThreshold.replace(/[^0-9]/g, ""), 10) || 2;
+    const discountNum = parseFloat(vipOfferDiscount) || 0;
+    const minBillNum = parseFloat(vipOfferMinBill) || 0;
+
+    setSavingVipOffer(true);
+    try {
+      const res = await api.parties.updateVipOffer({
+        vipVisitThreshold: thresholdNum,
+        vipOffer: {
+          enabled: vipOfferEnabled,
+          discountPercent: discountNum,
+          freebieItem: vipOfferFreebie.trim(),
+          minBillAmount: minBillNum,
+          customMessage: vipOfferMessage.trim(),
+        },
+      });
+
+      if (res?.success) {
+        setVipVisitThreshold(thresholdNum);
+        setVipInputText(String(thresholdNum));
+        setVipOfferModalVisible(false);
+        Alert.alert(
+          "VIP Criteria & Offer Saved",
+          `All customers with ${thresholdNum}+ visits are now marked as VIP and automatically receive ${discountNum}% discount ${vipOfferFreebie.trim() ? `+ ${vipOfferFreebie.trim()}` : ""} at POS billing!`
+        );
+        loadParties();
+      } else {
+        Alert.alert("Error", res?.message || "Failed to update VIP offer");
+      }
+    } catch (e) {
+      Alert.alert("Error", e.message || "Failed to update VIP offer");
+    } finally {
+      setSavingVipOffer(false);
+    }
+  };
+
   const openWhatsAppOffer = async (party) => {
     const res = await api.parties.getWhatsAppOffer(party._id);
     if (res && res.success && res.whatsappUrl) {
@@ -460,13 +532,26 @@ export default function PartyScreen({ user, isActive = true, onProfileUpdated, o
               </Text>
             </View>
           </View>
-          <TouchableOpacity
-            onPress={openAddPartyModal}
-            className="bg-white px-3 py-1.5 rounded-xl flex-row items-center shadow-xs"
-          >
-            <Ionicons name="person-add-outline" size={14} color="#2563EB" />
-            <Text className="text-blue-600 font-bold text-xs ml-1">+ Add</Text>
-          </TouchableOpacity>
+          <View className="flex-row gap-2">
+            <TouchableOpacity
+              onPress={() => {
+                loadVipOfferConfig();
+                setVipOfferModalVisible(true);
+              }}
+              className="bg-amber-400 active:bg-amber-500 px-3 py-1.5 rounded-xl flex-row items-center shadow-xs"
+            >
+              <Ionicons name="gift" size={14} color="#78350F" />
+              <Text className="text-amber-950 font-black text-xs ml-1">👑 All VIP Offers</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={openAddPartyModal}
+              className="bg-white px-3 py-1.5 rounded-xl flex-row items-center shadow-xs"
+            >
+              <Ionicons name="person-add-outline" size={14} color="#2563EB" />
+              <Text className="text-blue-600 font-bold text-xs ml-1">+ Add</Text>
+            </TouchableOpacity>
+          </View>
         </View>
         <View className="flex-row gap-2 mb-2.5">
           <TouchableOpacity
@@ -1018,6 +1103,218 @@ export default function PartyScreen({ user, isActive = true, onProfileUpdated, o
                       {editingParty ? "Update Customer" : "Save Customer"}
                     </Text>
                   )}
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ── Modal 3: Maintain All VIP Offers ── */}
+      <Modal
+        visible={vipOfferModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => {
+          Keyboard.dismiss();
+          setVipOfferModalVisible(false);
+        }}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={{ flex: 1 }}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 0}
+        >
+          <View className="flex-1 bg-black/60 justify-end sm:justify-center items-center p-0 sm:p-4">
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+              <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} />
+            </TouchableWithoutFeedback>
+
+            <View className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl p-5 max-h-[90%] shadow-2xl">
+              {/* Header */}
+              <View className="flex-row justify-between items-center pb-3 border-b border-gray-100">
+                <View className="flex-row items-center">
+                  <View className="w-9 h-9 rounded-xl bg-amber-100 items-center justify-center mr-2.5 border border-amber-300">
+                    <Ionicons name="gift" size={18} color="#B45309" />
+                  </View>
+                  <View>
+                    <Text className="text-base font-black text-gray-900">
+                      Maintain All VIP Offers
+                    </Text>
+                    <Text className="text-[11px] text-gray-500">
+                      Universal rules for diners meeting visit criteria
+                    </Text>
+                  </View>
+                </View>
+                <TouchableOpacity
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setVipOfferModalVisible(false);
+                  }}
+                  className="p-1"
+                >
+                  <Ionicons name="close" size={22} color="#6B7280" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView
+                className="py-3"
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={{ paddingBottom: 24 }}
+              >
+                {/* Notice Info Box */}
+                <View className="bg-amber-50 p-3 rounded-2xl border border-amber-200 mb-4">
+                  <Text className="text-xs font-bold text-amber-900 mb-1">
+                    🎯 How VIP Rules Work:
+                  </Text>
+                  <Text className="text-[11px] text-amber-800 leading-relaxed">
+                    Set the minimum visits (e.g. 2 visits). All customers who reach this visit count automatically receive this discount & freebie at billing. If an individual customer has a custom perk set, their individual perk takes precedence.
+                  </Text>
+                </View>
+
+                {/* Visit Threshold Selector */}
+                <View className="mb-4">
+                  <Text className="text-xs font-black text-gray-800 mb-1.5 uppercase tracking-wide">
+                    VIP Qualification Threshold (Visits)
+                  </Text>
+                  <View className="flex-row gap-2 mb-2">
+                    {["2", "3", "5", "10"].map((num) => (
+                      <TouchableOpacity
+                        key={num}
+                        onPress={() => setVipOfferThreshold(num)}
+                        className={`flex-1 py-2 rounded-xl items-center border ${
+                          vipOfferThreshold === num
+                            ? "bg-amber-500 border-amber-600 shadow-xs"
+                            : "bg-gray-100 border-gray-300"
+                        }`}
+                      >
+                        <Text
+                          className={`text-xs font-black ${
+                            vipOfferThreshold === num ? "text-white" : "text-gray-700"
+                          }`}
+                        >
+                          {num}+ Visits
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <TextInput
+                    className="bg-gray-100 border border-gray-300 rounded-xl px-3 py-2 text-xs text-gray-900 font-bold"
+                    placeholder="Or enter custom visits (e.g. 2)"
+                    keyboardType="numeric"
+                    value={vipOfferThreshold}
+                    onChangeText={setVipOfferThreshold}
+                  />
+                  <Text className="text-[10px] text-emerald-700 font-bold mt-1.5">
+                    ⭐ Customers with ≥{vipOfferThreshold || 2} visits are automatically marked VIP
+                  </Text>
+                </View>
+
+                {/* Offer Toggle Switch */}
+                <View className="flex-row items-center justify-between bg-slate-50 p-3 rounded-2xl border border-slate-200 mb-4">
+                  <View className="flex-1 mr-3">
+                    <Text className="text-xs font-black text-slate-800">
+                      Enable Universal VIP Offer
+                    </Text>
+                    <Text className="text-[10px] text-slate-500">
+                      Auto-apply to qualifying VIP diners at POS checkout
+                    </Text>
+                  </View>
+                  <Switch
+                    value={vipOfferEnabled}
+                    onValueChange={setVipOfferEnabled}
+                    trackColor={{ false: "#D1D5DB", true: "#FBBF24" }}
+                    thumbColor={vipOfferEnabled ? "#D97706" : "#9CA3AF"}
+                  />
+                </View>
+
+                {/* VIP Discount (%) */}
+                <View className="mb-3.5">
+                  <Text className="text-xs font-bold text-gray-700 mb-1">
+                    All-VIP Bill Discount (%)
+                  </Text>
+                  <TextInput
+                    className="bg-gray-100 border border-gray-300 rounded-xl px-3 py-2.5 text-sm text-gray-900 font-bold"
+                    placeholder="e.g. 10"
+                    keyboardType="numeric"
+                    value={vipOfferDiscount}
+                    onChangeText={setVipOfferDiscount}
+                  />
+                </View>
+
+                {/* VIP Complimentary Freebie / Perk */}
+                <View className="mb-3.5">
+                  <Text className="text-xs font-bold text-gray-700 mb-1">
+                    All-VIP Complimentary Freebie / Perk
+                  </Text>
+                  <TextInput
+                    className="bg-gray-100 border border-gray-300 rounded-xl px-3 py-2.5 text-sm text-gray-900 font-medium"
+                    placeholder="e.g. Complimentary Dessert, Welcome Drink"
+                    value={vipOfferFreebie}
+                    onChangeText={setVipOfferFreebie}
+                  />
+                </View>
+
+                {/* Minimum Bill Amount */}
+                <View className="mb-3.5">
+                  <Text className="text-xs font-bold text-gray-700 mb-1">
+                    Minimum Bill Amount (Rs.) (Optional)
+                  </Text>
+                  <TextInput
+                    className="bg-gray-100 border border-gray-300 rounded-xl px-3 py-2.5 text-sm text-gray-900"
+                    placeholder="0 for no minimum"
+                    keyboardType="numeric"
+                    value={vipOfferMinBill}
+                    onChangeText={setVipOfferMinBill}
+                  />
+                </View>
+
+                {/* Custom Offer WhatsApp Message */}
+                <View className="mb-5">
+                  <Text className="text-xs font-bold text-gray-700 mb-1">
+                    VIP Offer Message (for WhatsApp / SMS)
+                  </Text>
+                  <TextInput
+                    className="bg-gray-100 border border-gray-300 rounded-xl px-3 py-2.5 text-xs text-gray-900"
+                    multiline
+                    numberOfLines={2}
+                    placeholder="Special VIP Diner Offer! Thank you for visiting us."
+                    value={vipOfferMessage}
+                    onChangeText={setVipOfferMessage}
+                  />
+                </View>
+
+                {/* Save Button */}
+                <TouchableOpacity
+                  onPress={handleSaveUniversalVipOffer}
+                  disabled={savingVipOffer}
+                  className="w-full bg-blue-600 py-3.5 rounded-xl items-center shadow-md flex-row justify-center mb-2"
+                >
+                  {savingVipOffer ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Ionicons name="checkmark-circle" size={17} color="#FFFFFF" />
+                      <Text className="text-white font-black text-sm ml-2">
+                        Save All-VIP Offer Rule
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+
+                {/* Broadcast via WhatsApp */}
+                <TouchableOpacity
+                  onPress={() => {
+                    setVipOfferModalVisible(false);
+                    handleBulkVipOffer();
+                  }}
+                  className="w-full bg-emerald-600 py-3 rounded-xl items-center shadow-xs flex-row justify-center"
+                >
+                  <FontAwesome name="whatsapp" size={16} color="#FFFFFF" />
+                  <Text className="text-white font-bold text-xs ml-2">
+                    Broadcast Offer to All VIPs on WhatsApp
+                  </Text>
                 </TouchableOpacity>
               </ScrollView>
             </View>

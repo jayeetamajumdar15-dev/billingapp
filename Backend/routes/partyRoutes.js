@@ -2,6 +2,7 @@ import express from "express";
 import { createRequire } from "module";
 import Party from "../models/Party.js";
 import Invoice from "../models/Invoice.js";
+import User from "../models/User.js";
 import { protect } from "../middleware/authMiddleware.js";
 import { sendWhatsAppMessage, getWhatsAppStatus } from "../services/whatsappService.js";
 import { enqueueJob } from "../services/jobQueueService.js";
@@ -13,6 +14,68 @@ const { PDFParse } = require("pdf-parse");
 const router = express.Router();
 
 router.use(protect);
+
+router.get("/vip-offer", async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select("vipVisitThreshold vipOffer businessName").lean();
+    const threshold = Number(user?.vipVisitThreshold) || 3;
+    const vipOffer = user?.vipOffer || {
+      enabled: true,
+      discountPercent: 10,
+      freebieItem: "",
+      minBillAmount: 0,
+      customMessage: "Special VIP Diner Club Offer",
+    };
+    const qualifyingCount = await Party.countDocuments({
+      userId: req.user._id,
+      type: "customer",
+      $or: [
+        { isRegular: true },
+        { isRegular: "true" },
+        { visitCount: { $gte: threshold } },
+        { customDiscountPercent: { $gt: 0 } },
+      ],
+    });
+    return res.status(200).json({
+      success: true,
+      vipVisitThreshold: threshold,
+      vipOffer,
+      qualifyingCount,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+router.put("/vip-offer", async (req, res) => {
+  try {
+    const { vipVisitThreshold, vipOffer } = req.body;
+    const updateObj = {};
+    if (vipVisitThreshold !== undefined) {
+      updateObj.vipVisitThreshold = Math.max(1, Number(vipVisitThreshold) || 1);
+    }
+    if (vipOffer && typeof vipOffer === "object") {
+      updateObj.vipOffer = {
+        enabled: vipOffer.enabled !== false,
+        discountPercent: Math.max(0, Math.min(100, Number(vipOffer.discountPercent) || 0)),
+        freebieItem: (vipOffer.freebieItem || "").trim(),
+        minBillAmount: Math.max(0, Number(vipOffer.minBillAmount) || 0),
+        customMessage: (vipOffer.customMessage || "").trim() || "Special VIP Diner Club Offer",
+      };
+    }
+    const updatedUser = await User.findByIdAndUpdate(req.user._id, { $set: updateObj }, { new: true })
+      .select("vipVisitThreshold vipOffer")
+      .lean();
+    return res.status(200).json({
+      success: true,
+      vipVisitThreshold: updatedUser.vipVisitThreshold,
+      vipOffer: updatedUser.vipOffer,
+      message: "VIP criteria and universal offer updated successfully.",
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
 
 router.post("/broadcast-offer", async (req, res) => {
   try {

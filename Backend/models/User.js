@@ -103,6 +103,13 @@ const userSchema = new mongoose.Schema(
       type: Number,
       default: 3,
     },
+    vipOffer: {
+      enabled: { type: Boolean, default: true },
+      discountPercent: { type: Number, default: 10 },
+      freebieItem: { type: String, default: "" },
+      minBillAmount: { type: Number, default: 0 },
+      customMessage: { type: String, default: "Special VIP Diner Club Offer" },
+    },
     aggregatorConfig: {
       enabled: { type: Boolean, default: false },
       outletId: { type: String, trim: true, default: "" },

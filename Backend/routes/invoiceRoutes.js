@@ -611,19 +611,43 @@ router.post("/", async (req, res) => {
       }
     }
     if (customer) {
-      const vipThreshold = req.user?.vipVisitThreshold || 3;
-      isRegularCustomer = customer.isRegular || (customer.visitCount >= vipThreshold);
+      const vipThreshold = Number(req.user?.vipVisitThreshold) || 3;
+      isRegularCustomer = Boolean(customer.isRegular || ((customer.visitCount || 0) >= vipThreshold));
+      const userVipOffer = req.user?.vipOffer || {};
+      const vipOfferEnabled = userVipOffer.enabled !== false;
+
+      // Check custom individual discount first, fallback to All-VIP Offer
       if (!regularDiscountPercent && isRegularCustomer && applyRegularDiscount) {
-        regularDiscountPercent = customer.customDiscountPercent || 0;
+        if (customer.customDiscountPercent > 0) {
+          regularDiscountPercent = customer.customDiscountPercent;
+        } else if (vipOfferEnabled && (userVipOffer.discountPercent || 0) > 0) {
+          regularDiscountPercent = Number(userVipOffer.discountPercent) || 0;
+        }
       }
+
+      // Check custom individual freebie first, fallback to All-VIP Offer
       if (!freebieItem && isRegularCustomer && applyRegularDiscount) {
-        freebieItem = customer.assignedFreebie || "";
+        if (customer.assignedFreebie && customer.assignedFreebie.trim()) {
+          freebieItem = customer.assignedFreebie.trim();
+        } else if (vipOfferEnabled && userVipOffer.freebieItem && userVipOffer.freebieItem.trim()) {
+          freebieItem = userVipOffer.freebieItem.trim();
+        }
       }
     }
     let calculatedSubtotal = 0;
     let calculatedTaxTotal = 0;
     const processedItems = [];
     const stockUpdates = [];
+
+    // Pre-fetch items to inspect BOM recipes for raw material deduction
+    const itemIdsToFetch = items
+      .map((it) => it.itemId || it._id)
+      .filter((id) => id && mongoose.Types.ObjectId.isValid(id));
+    const dbItems = itemIdsToFetch.length > 0
+      ? await Item.find({ _id: { $in: itemIdsToFetch }, userId: req.user._id }).lean()
+      : [];
+    const dbItemMap = new Map(dbItems.map((d) => [d._id.toString(), d]));
+
     for (const it of items) {
       const price = Number(it.sellingPrice ?? it.price ?? it.rate ?? 0);
       const qty = Number(it.quantity) || 1;
@@ -652,7 +676,39 @@ router.post("/", async (req, res) => {
         discountPercent: it.discountPercent || 0,
         total: lineTotal + lineTax,
       });
-      if (validItemId) {
+
+      const matchedDbItem = validItemId ? dbItemMap.get(validItemId.toString()) : null;
+
+      // Smart POS multi-stage recipe management auto-deduction
+      if (
+        matchedDbItem?.recipe &&
+        Array.isArray(matchedDbItem.recipe) &&
+        matchedDbItem.recipe.length > 0 &&
+        matchedDbItem.autoDeductRecipeStock !== false
+      ) {
+        for (const ingredient of matchedDbItem.recipe) {
+          if (ingredient.rawMaterialId) {
+            const consumedQty = Number(ingredient.quantity || 0) * qty;
+            if (consumedQty > 0) {
+              stockUpdates.push({
+                updateOne: {
+                  filter: { _id: ingredient.rawMaterialId, userId: req.user._id },
+                  update: { $inc: { stock: -consumedQty } },
+                },
+              });
+            }
+          }
+        }
+        // Deduct finished good stock if tracked
+        if (validItemId && matchedDbItem.itemType !== "RAW_MATERIAL") {
+          stockUpdates.push({
+            updateOne: {
+              filter: { _id: validItemId, userId: req.user._id },
+              update: { $inc: { stock: -qty } },
+            },
+          });
+        }
+      } else if (validItemId) {
         stockUpdates.push({
           updateOne: {
             filter: { _id: validItemId, userId: req.user._id },

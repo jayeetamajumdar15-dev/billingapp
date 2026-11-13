@@ -393,6 +393,12 @@ export const api = {
         body: JSON.stringify(payload),
       }),
     getVipCount: () => request("/parties/vip-count"),
+    getVipOffer: () => request("/parties/vip-offer"),
+    updateVipOffer: (payload) =>
+      request("/parties/vip-offer", {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      }),
     sendBulkVipOffer: () =>
       request("/parties/send-bulk-vip-offer", { method: "POST" }),
     broadcastOffer: (payload) =>
@@ -536,5 +542,42 @@ export const api = {
         body: JSON.stringify(payload),
       }),
     deleteArea: (id) => request(`/tables/areas/${id}`, { method: "DELETE" }),
+  },
+  inventory: {
+    getTransfers: (params = "") => request(`/inventory/transfers${params ? `?${params}` : ""}`),
+    createTransfer: (payload) =>
+      request("/inventory/transfers", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    updateTransferStatus: (id, status) =>
+      request(`/inventory/transfers/${id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      }),
+    getPurchaseOrders: (params = "") => request(`/inventory/purchase-orders${params ? `?${params}` : ""}`),
+    createPurchaseOrder: (payload) =>
+      request("/inventory/purchase-orders", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    updatePurchaseOrderStatus: (id, status) =>
+      request(`/inventory/purchase-orders/${id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      }),
+    getFrequentItems: () => request("/inventory/frequent-items"),
+    getRawMaterials: () => request("/inventory/raw-materials"),
+    updateAvailability: (id, payload) =>
+      request(`/inventory/availability/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      }),
+    getRecipes: () => request("/inventory/recipes"),
+    saveRecipe: (id, payload) =>
+      request(`/inventory/recipe/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      }),
   },
 };

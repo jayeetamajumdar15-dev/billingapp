@@ -2366,3 +2366,4 @@ export function generateUniversalReportPdf(reportMeta, resultData, storeInfo = {
     }
   });
 }
+
