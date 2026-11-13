@@ -161,7 +161,8 @@ export default function InventoryScreen({ user, isActive = true, onOpenDrawer, o
     if (isUnfiltered) {
       const cached = await getCachedData("items_all");
       if (Array.isArray(cached) && cached.length > 0) {
-        setItems(sortItemsNaturally(applyOfflineItemOpsToList(cached)));
+        const mergedCached = await applyOfflineItemOpsToList(cached);
+        setItems(sortItemsNaturally(mergedCached));
         hasCached = true;
       }
     }
@@ -176,10 +177,11 @@ export default function InventoryScreen({ user, isActive = true, onOpenDrawer, o
 
       const res = await api.items.getAll(queryString);
       if (res.success && Array.isArray(res.items)) {
-        const sorted = sortItemsNaturally(applyOfflineItemOpsToList(res.items));
+        const merged = await applyOfflineItemOpsToList(res.items);
+        const sorted = sortItemsNaturally(merged);
         setItems(sorted);
         if (isUnfiltered) {
-          setCachedData("items_all", res.items);
+          setCachedData("items_all", sorted);
         }
       }
     } catch (e) {
@@ -631,7 +633,7 @@ export default function InventoryScreen({ user, isActive = true, onOpenDrawer, o
         <ResponsiveContainer maxWidth={1200}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row">
             {[
-              { id: "menu", label: "Dishes & Menu", icon: "fast-food" },
+              { id: "menu", label: "All Items / Menu", icon: "fast-food" },
               { id: "raw", label: `Raw Materials${lowStockRawCount > 0 ? ` (${lowStockRawCount} Low)` : ""}`, icon: "cube" },
               { id: "recipe", label: "Multi-Stage Recipes (BOM)", icon: "restaurant" },
               { id: "transfers", label: "Central Kitchen Hub", icon: "git-network" },

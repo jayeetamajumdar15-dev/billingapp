@@ -101,3 +101,4 @@ stockTransferSchema.index({ userId: 1, createdAt: -1 });
 
 const StockTransfer = mongoose.model("StockTransfer", stockTransferSchema);
 export default StockTransfer;
+

@@ -106,3 +106,4 @@ purchaseOrderSchema.index({ userId: 1, createdAt: -1 });
 
 const PurchaseOrder = mongoose.model("PurchaseOrder", purchaseOrderSchema);
 export default PurchaseOrder;
+
